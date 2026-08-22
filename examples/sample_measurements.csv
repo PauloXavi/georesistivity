@@ -1,0 +1,9 @@
+dataset_note,#,Delta V,Voltage unit,Current,Current unit,K,K unit,K source,AB/2,Spacing unit,Delta V [V],I [A],K [m],AB/2 [m],rho_a [ohm.m]
+synthetic demonstration data,1,80,mV,40,mA,6,m,synthetic demonstration data,1,m,0.08,0.04,6,1,12
+synthetic demonstration data,2,95,mV,40,mA,9,m,synthetic demonstration data,1.5,m,0.095,0.04,9,1.5,21.375
+synthetic demonstration data,3,110,mV,45,mA,14,m,synthetic demonstration data,2.5,m,0.11,0.045,14,2.5,34.2222222222
+synthetic demonstration data,4,120,mV,50,mA,22,m,synthetic demonstration data,4,m,0.12,0.05,22,4,52.8
+synthetic demonstration data,5,105,mV,50,mA,35,m,synthetic demonstration data,6,m,0.105,0.05,35,6,73.5
+synthetic demonstration data,6,90,mV,45,mA,55,m,synthetic demonstration data,10,m,0.09,0.045,55,10,110
+synthetic demonstration data,7,75,mV,40,mA,82,m,synthetic demonstration data,15,m,0.075,0.04,82,15,153.75
+synthetic demonstration data,8,60,mV,35,mA,125,m,synthetic demonstration data,25,m,0.06,0.035,125,25,214.2857142857
