@@ -1,0 +1,17 @@
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Local operating-system files
+.DS_Store
+
+# Private internship and administrative documents
+/Relatorio final.docx
+/PlanoEstagio*.doc
+/ajustar tamanho do grid do grafico .txt
