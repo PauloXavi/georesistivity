@@ -2,6 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.62%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![CI](https://github.com/PauloXavi/georesistivity/actions/workflows/ci.yml/badge.svg)](https://github.com/PauloXavi/georesistivity/actions/workflows/ci.yml)
 
 GeoResistivity is a scientific Python application for apparent resistivity calculation,
 unit-aware measurement handling, validation, visualization, and CSV export.
