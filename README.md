@@ -147,6 +147,9 @@ GeoResistivity requires Python 3.11 or newer.
 From the project root:
 
 ```bash
+git clone https://github.com/PauloXavi/georesistivity.git
+cd georesistivity
+
 python -m venv .venv
 source .venv/bin/activate
 
