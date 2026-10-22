@@ -1,28 +1,82 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "georesistivity-calculator"
-version = "0.1.0"
-description = "Scientific core for calculating apparent electrical resistivity"
+name = "georesistivity"
+dynamic = ["version"]
+description = "Unit-aware apparent electrical resistivity calculation, validation, visualization, and CSV export"
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Paulo Gabriel Xavier Marques" }]
+keywords = [
+    "geophysics",
+    "electrical resistivity",
+    "apparent resistivity",
+    "vertical electrical sounding",
+    "VES",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Typing :: Typed",
+]
 dependencies = [
     "matplotlib>=3.8",
     "pandas>=2.2",
-    "streamlit>=1.62",
 ]
 
 [project.optional-dependencies]
+app = [
+    "streamlit>=1.62",
+]
 dev = [
+    "hypothesis>=6.100",
+    "mypy>=1.10",
+    "pandas-stubs>=2.2",
+    "pip-audit>=2.7",
     "pytest>=8",
+    "pytest-cov>=5",
     "ruff>=0.9",
 ]
+
+[project.urls]
+Homepage = "https://github.com/PauloXavi/georesistivity"
+Issues = "https://github.com/PauloXavi/georesistivity/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "georesistivity.__version__" }
+
+[tool.setuptools.package-data]
+georesistivity = ["py.typed"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["georesistivity", "app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.mypy]
+strict = true
+files = ["src", "app"]
+mypy_path = "src"
 
 [tool.ruff]
 target-version = "py311"

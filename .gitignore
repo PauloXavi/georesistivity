@@ -6,7 +6,14 @@ build/
 dist/
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 .venv/
+venv/
 
 # Local operating-system files
 .DS_Store
