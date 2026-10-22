@@ -9,32 +9,73 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
+    name: Lint, types and dependency audit
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-
-      - name: Install project and development dependencies
-        run: python -m pip install -e ".[dev]"
-
-      - name: Run tests
-        run: python -m pytest
+      - name: Install project with app and development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[app,dev]"
 
       - name: Run Ruff lint checks
         run: python -m ruff check .
 
       - name: Check Ruff formatting
         run: python -m ruff format --check .
+
+      - name: Run mypy in strict mode
+        run: python -m mypy
+
+      - name: Audit dependencies for known vulnerabilities
+        run: python -m pip_audit --skip-editable
+
+  tests:
+    name: Tests (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install project with app and development dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[app,dev]"
+
+      - name: Run tests with coverage
+        run: python -m pytest --cov --cov-report=term-missing
