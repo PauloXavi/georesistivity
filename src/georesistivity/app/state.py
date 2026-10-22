@@ -55,6 +55,9 @@ TEMPLATE_CHOICE = "sheet_template_choice"
 TEMPLATE_NAME = "sheet_template_name"
 TEMPLATE_MESSAGE = "sheet_template_message"
 SURVEY_EXPANDED = "survey_details_expanded"
+IMPORT_UPLOAD = "import_upload"
+IMPORT_FILE = "import_file"
+IMPORT_MESSAGE = "import_message"
 
 META_NAME = "survey_name"
 META_AREA = "survey_area"
@@ -125,6 +128,8 @@ def initialize() -> None:
     st.session_state.setdefault(TEMPLATE_NAME, "")
     st.session_state.setdefault(TEMPLATE_MESSAGE, None)
     st.session_state.setdefault(SURVEY_EXPANDED, True)
+    st.session_state.setdefault(IMPORT_FILE, None)
+    st.session_state.setdefault(IMPORT_MESSAGE, None)
     for key in META_TEXT_FIELDS.values():
         st.session_state.setdefault(key, "")
     for key in META_OPTIONAL_FIELDS.values():
@@ -360,3 +365,36 @@ def set_template_message(message: Message | None) -> None:
 def survey_expanded() -> bool:
     """Whether the survey details open expanded; changes only when a project is loaded."""
     return cast(bool, st.session_state[SURVEY_EXPANDED])
+
+
+def import_file() -> tuple[str, bytes] | None:
+    """Name and content of the CSV file being imported."""
+    return cast(tuple[str, bytes] | None, st.session_state[IMPORT_FILE])
+
+
+def set_import_file(name: str, data: bytes) -> None:
+    st.session_state[IMPORT_FILE] = (name, data)
+
+
+def import_message() -> Message | None:
+    return cast(Message | None, st.session_state[IMPORT_MESSAGE])
+
+
+def set_import_message(message: Message | None) -> None:
+    st.session_state[IMPORT_MESSAGE] = message
+
+
+def sheet_has_readings() -> bool:
+    return any(row.delta_v.strip() or row.current.strip() for row in current_sheet_rows())
+
+
+def replace_sheet(rows: Sequence[SheetRow], voltage_unit: str, current_unit: str) -> None:
+    """Start the sheet over with ``rows`` and their units. Only valid inside a callback."""
+    st.session_state[SHEET_VOLTAGE_UNIT] = voltage_unit
+    st.session_state[SHEET_CURRENT_UNIT] = current_unit
+    reset_sheet(rows)
+
+
+def append_to_sheet(rows: Sequence[SheetRow]) -> None:
+    """Add ``rows`` after the current sheet rows. Only valid inside a callback."""
+    reset_sheet([*current_sheet_rows(), *rows])

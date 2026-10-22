@@ -1,6 +1,7 @@
 """Interface tests for the Streamlit application using Streamlit's AppTest."""
 
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -664,3 +665,206 @@ def test_restoring_details_collapses_the_survey_panel(isolated_data_home: Path) 
     app_test.button(key="restore_earlier").click().run()
 
     assert app_test.session_state["survey_details_expanded"] is False
+
+
+def import_script() -> None:
+    import streamlit as st
+
+    from georesistivity.app import import_view, state
+
+    state.initialize()
+    rows = st.session_state.get("seed_rows")
+    if rows is not None and st.session_state.get("seeded") is None:
+        st.session_state["seeded"] = True
+        state.reset_sheet(rows)
+        state.set_current_sheet_rows(rows)
+    message = state.import_message()
+    if message is not None:
+        st.write(f"message: {message[1]}")
+        state.set_import_message(None)
+    name, data = st.session_state["fake_file"]
+    import_view.render_import_file(name, data)
+
+
+def import_app(text: str, *, seed_rows: list[SheetRow] | None = None) -> AppTest:
+    app_test = AppTest.from_function(import_script, default_timeout=30)
+    app_test.session_state["fake_file"] = ("dados.csv", text.encode("utf-8"))
+    if seed_rows is not None:
+        app_test.session_state["seed_rows"] = seed_rows
+    app_test.run()
+    assert not app_test.exception
+    return app_test
+
+
+def by_label(elements: Any, label: str) -> Any:
+    return next(element for element in elements if element.label == label)
+
+
+def markdown_text(app_test: AppTest) -> str:
+    return "\n".join(str(markdown.value) for markdown in app_test.markdown)
+
+
+SHEET_CSV = "Cor;AB/2;MN;ΔV;I\nVD;1;0,5;80;40\nAM;1,3;0,5;1,000;40\nAZ;1,8;0,5;abc;40\n"
+
+
+def test_import_preview_detects_the_file_and_reports_problems() -> None:
+    app_test = import_app(SHEET_CSV)
+
+    assert any(
+        "dados.csv: UTF-8, semicolon ;, 3 data rows." in str(c.value) for c in app_test.caption
+    )
+    assert app_test.dataframe[0].value.shape == (3, 5)
+    assert by_label(app_test.radio, "Import into").value == "sheet"
+    assert "2 of 3 rows ready to import." in markdown_text(app_test)
+    issues = app_test.dataframe[1].value
+    assert issues.to_dict("records") == [
+        {"Line": 4, "Column": "\u0394V", "Problem": "invalid numeric value: 'abc'"}
+    ]
+
+
+def test_strict_decimal_choice_rejects_thousands_like_values() -> None:
+    app_test = import_app(SHEET_CSV)
+
+    by_label(app_test.selectbox, "Decimal separator of the file").set_value("strict").run()
+
+    assert "1 of 3 rows ready to import." in markdown_text(app_test)
+
+
+def test_import_replaces_the_field_sheet() -> None:
+    app_test = import_app(SHEET_CSV)
+
+    next(b for b in app_test.button if b.label == "Import 2 rows").click().run()
+
+    assert "message: Imported 2 rows from dados.csv into the Field sheet tab." in markdown_text(
+        app_test
+    )
+    assert app_test.session_state["sheet_rows"] == [
+        SheetRow(marker="VD", ab2="1", mn="0,5", delta_v="80", current="40"),
+        SheetRow(marker="AM", ab2="1,3", mn="0,5", delta_v="1", current="40"),
+    ]
+    assert app_test.session_state["sheet_voltage_unit"] == "mV"
+
+
+def test_import_can_add_after_the_current_rows() -> None:
+    app_test = import_app(SHEET_CSV, seed_rows=[SheetRow(ab2="10", mn="2")])
+
+    by_label(app_test.radio, "How").set_value("append").run()
+    next(b for b in app_test.button if b.label == "Import 2 rows").click().run()
+
+    rows = app_test.session_state["sheet_rows"]
+    assert [row.ab2 for row in rows] == ["10", "1", "1,3"]
+
+
+def test_adding_rows_with_other_units_to_a_sheet_with_readings_is_refused() -> None:
+    text = "AB/2,MN,Delta V,Voltage unit,Current,Current unit\n1,0.5,0.08,V,0.04,A\n"
+    seed = [SheetRow(ab2="10", mn="2", delta_v="80", current="40")]
+    app_test = import_app(text, seed_rows=seed)
+
+    by_label(app_test.radio, "How").set_value("append").run()
+    next(b for b in app_test.button if b.label == "Import 1 row").click().run()
+
+    assert "message: Nothing was imported: the units differ from the sheet's." in markdown_text(
+        app_test
+    )
+    assert app_test.session_state["sheet_rows"] == seed
+
+
+def test_measurements_are_imported_into_single_measurement() -> None:
+    app_test = import_app("Delta V,Current,K,K source\n125,35,625,table\n")
+
+    assert by_label(app_test.radio, "Import into").value == "measurements"
+    by_label(app_test.selectbox, "Length unit (K, AB/2, MN)").set_value("m").run()
+    next(b for b in app_test.button if b.label == "Import 1 row").click().run()
+
+    assert "Imported 1 measurement from dados.csv" in markdown_text(app_test)
+    (result,) = app_test.session_state["measurements"]
+    assert result.measurement.geometric_factor_source == "table"
+    assert app_test.session_state["last_result"] == result
+
+
+def test_missing_required_columns_are_asked_for() -> None:
+    app_test = import_app("x;y\n1;2\n")
+
+    assert any(
+        "Choose a column for: AB/2 [m], MN [m], \u0394V, I." in str(w.value)
+        for w in app_test.warning
+    )
+    assert not [b for b in app_test.button if b.label.startswith("Import")]
+
+
+def test_mapping_can_be_changed() -> None:
+    app_test = import_app("a;b;c;d\n1;0,5;80;40\n")
+    for label, index in (("AB/2 [m] *", 0), ("MN [m] *", 1), ("\u0394V *", 2), ("I *", 3)):
+        by_label(app_test.selectbox, label).set_value(index).run()
+
+    assert "1 of 1 row ready to import." in markdown_text(app_test)
+
+
+def test_unreadable_file_is_reported() -> None:
+    app_test = import_app('a,b\n"1,2\n')
+
+    assert "The file could not be read: the file is not valid CSV" in error_text(app_test)
+
+
+def test_import_tab_is_part_of_the_interface(app: AppTest) -> None:
+    assert [tab.label for tab in app.tabs] == [
+        "Field sheet (VES)",
+        "Single measurement",
+        "Import CSV",
+    ]
+
+
+def test_plural_helper() -> None:
+    from georesistivity.app.common import plural
+
+    assert plural(1, "row") == "1 row"
+    assert plural(0, "row") == "0 rows"
+    assert plural(2, "data row") == "2 data rows"
+    assert plural(3, "analysis", "analyses") == "3 analyses"
+
+
+def apply_import_script() -> None:
+    import streamlit as st
+
+    from georesistivity.app import import_view, state
+
+    state.initialize()
+    if st.session_state.get("broken") is not None:
+        state.set_import_file("broken.csv", st.session_state["broken"])
+    import_view.apply_import()
+    st.write(repr(state.import_message()))
+
+
+def test_import_callback_without_a_file_does_nothing() -> None:
+    app_test = AppTest.from_function(apply_import_script, default_timeout=30)
+    app_test.run()
+
+    assert markdown_text(app_test) == "None"
+
+
+def test_import_callback_reports_a_file_that_became_unreadable() -> None:
+    app_test = AppTest.from_function(apply_import_script, default_timeout=30)
+    app_test.session_state["broken"] = b'a,b\n"1,2\n'
+    app_test.run()
+
+    assert "Nothing was imported: the file is not valid CSV" in markdown_text(app_test)
+
+
+def test_long_files_preview_the_first_rows() -> None:
+    rows = "".join(f"{1 + i};0,5;80;40\n" for i in range(12))
+    app_test = import_app("AB/2;MN;ΔV;I\n" + rows)
+
+    assert any(str(c.value) == "First 10 of 12 data rows." for c in app_test.caption)
+    assert app_test.dataframe[0].value.shape == (10, 4)
+
+
+def test_import_page_shows_the_last_result_once(app: AppTest) -> None:
+    app.session_state["import_message"] = (
+        "success",
+        "Imported 2 rows from x.csv into the Field sheet tab.",
+    )
+    app.run()
+
+    assert "Imported 2 rows from x.csv" in "\n".join(str(s.value) for s in app.success)
+    app.run()
+    assert not any("Imported 2 rows" in str(s.value) for s in app.success)

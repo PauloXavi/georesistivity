@@ -16,6 +16,7 @@ from georesistivity.app.common import (
     WARNING_MESSAGES,
 )
 from georesistivity.app.field_sheet_view import render_field_sheet
+from georesistivity.app.import_view import render_import
 from georesistivity.app.project_view import (
     autosave,
     render_project_controls,
@@ -486,7 +487,9 @@ def main() -> None:
         "and current, with the geometric factor entered or calculated from the geometry."
     )
 
-    sheet_tab, single_tab = st.tabs(["Field sheet (VES)", "Single measurement"])
+    sheet_tab, single_tab, import_tab = st.tabs(
+        ["Field sheet (VES)", "Single measurement", "Import CSV"]
+    )
     with sheet_tab:
         render_survey_details()
         render_field_sheet()
@@ -498,6 +501,8 @@ def main() -> None:
         results = state.measurements()
         render_measurements(results)
         render_plot(results)
+    with import_tab:
+        render_import()
 
     project = state.current_project()
     autosave(project)

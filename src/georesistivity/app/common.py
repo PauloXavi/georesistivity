@@ -31,3 +31,8 @@ WARNING_SHORT_LABELS: dict[MeasurementWarning, str] = {
     MeasurementWarning.STACK_HIGH_VARIATION: "CV above limit",
     MeasurementWarning.STACK_MIXED_SIGNS: "mixed signs",
 }
+
+
+def plural(count: int, singular: str, plural_form: str | None = None) -> str:
+    """``1 row``, ``2 rows``: the count with the right form of the noun."""
+    return f"{count} {singular if count == 1 else plural_form or singular + 's'}"
