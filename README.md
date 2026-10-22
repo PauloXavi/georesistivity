@@ -271,6 +271,32 @@ older versions are migrated automatically. Set `GEORESISTIVITY_HOME` to keep the
 in another folder, and start the interface with `--no-autosave` (or set
 `GEORESISTIVITY_AUTOSAVE=0`) to turn autosave off, for example on a shared server.
 
+## Importing CSV Files
+
+The **Import CSV** tab brings readings into the field sheet, or measurements with a known K
+into the single measurements, from a CSV file. It reads the files GeoResistivity exports, in
+both formats, and other spreadsheets:
+
+- **Reading:** UTF-8 (with or without BOM) or Windows-1252, as saved by Excel on Portuguese
+  systems; `;`, `,`, or tab as separator, including Excel's `sep=` line. The first rows are
+  shown before anything is imported.
+- **Decimal separator:** one convention for the whole file, as in the form (D-1). A
+  comma-separated file uses a point; otherwise the numbers declare it, for example `1,5` with
+  `;`. When the numbers do not settle it, values such as `1,000` are rejected as ambiguous.
+  The detected convention is shown and can be changed.
+- **Columns:** the target and the column of each field are proposed from the header (English
+  export names and common Portuguese names such as Cor, ΔV, Excluir, Motivo) and can be
+  changed. Units come from unit columns when present, otherwise from the selectors.
+- **Problems:** every row that cannot be imported is listed with its line in the file, its
+  column, and the reason, and is left out; the others can be imported.
+- **Field sheet:** the import replaces the sheet, using the file's units, or adds the rows
+  after the current ones (only with the same units if the sheet already has readings).
+
+Exporting readings or measurements and importing them back gives exactly the same data, in
+both CSV formats; the test suite checks this round trip. The bundled
+[`examples/sample_measurements.csv`](examples/sample_measurements.csv) imports as eight single
+measurements.
+
 ## Visualization Behavior
 
 The **Apparent Resistivity vs. Electrode Spacing** graph is displayed only when at least two
@@ -404,8 +430,8 @@ values with an equals sign (`--dv=-125mV`). `--number-format en` prints a decima
 
 [`examples/sample_measurements.csv`](examples/sample_measurements.csv) contains the sample
 measurements provided as a small example and reference dataset. The I/O test suite reads this
-file to verify its structure and scientific consistency. The current Streamlit application
-does not import CSV files.
+file to verify its structure and scientific consistency, and it can be loaded in the
+**Import CSV** tab.
 
 The bundled sample measurements are synthetic and provided for demonstration and testing
 purposes.
@@ -420,11 +446,13 @@ GeoResistivity/
 │   ├── app/                # Streamlit interface
 │   │   ├── common.py
 │   │   ├── field_sheet_view.py
+│   │   ├── import_view.py
 │   │   ├── main.py
 │   │   ├── project_view.py
 │   │   └── state.py
 │   ├── cli.py
 │   ├── core.py
+│   ├── csv_import.py
 │   ├── field_sheet.py
 │   ├── formatting.py
 │   ├── geometry.py
@@ -456,6 +484,8 @@ GeoResistivity/
 | `src/georesistivity/stacking.py` | Statistics of repeated readings. |
 | `src/georesistivity/project.py` | Versioned `.geores.json` project files and sheet templates. |
 | `src/georesistivity/storage.py` | Local autosave copies and templates, written atomically. |
+| `src/georesistivity/csv_import.py` | CSV reading, column mapping, and row validation for import. |
+| `src/georesistivity/spreadsheet.py` | Protection of CSV text against formula injection, and its inverse. |
 | `src/georesistivity/field_sheet.py` | Rows of the digital field sheet turned into sounding points. |
 | `src/georesistivity/models.py` | Immutable measurement and result models, warnings, and field errors. |
 | `src/georesistivity/units.py` | Explicit conversion of supported units to SI. |
@@ -503,12 +533,13 @@ python -m mypy
 python -m pip_audit --skip-editable
 ```
 
-The current suite contains **503 automated tests** with branch coverage enforced at 95%,
+The current suite contains **583 automated tests** with branch coverage enforced at 95%,
 covering:
 
 - scientific calculation and sign policy;
 - sounding points, repeated readings, exclusions, and the digital field sheet;
 - project files, migrations, autosave, recovery, and templates;
+- CSV import, including round trips of both export formats;
 - geometric factors, including the field-sheet K table and every array against the general
   formula;
 - unit conversions;
@@ -553,7 +584,6 @@ GeoResistivity deliberately keeps its scientific scope narrow. The current versi
 - perform automatic geological interpretation;
 - perform 1D, 2D, or 3D subsurface modeling;
 - store measurements in a database;
-- import CSV files;
 - replace acquisition or interpretation software.
 
 AB/2 is treated only as optional spacing metadata for records and visualization. Scientific

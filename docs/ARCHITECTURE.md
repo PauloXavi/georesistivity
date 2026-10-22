@@ -443,6 +443,13 @@ com as cores de marcação. Diferença em relação à seção 8: as células nu
 gravadas como texto digitado (e não como valor + unidade por leitura), e o horário de cada
 leitura ainda não é registrado; fica para a P2, junto com o histórico de alterações.
 
+**Andamento:** M5 concluído em 2026-10-22: aba "Importar CSV" para a folha de campo e para
+as medições avulsas, com leitura de UTF-8 e Windows-1252 (Excel em português), separador
+`;`/`,`/tab e linha `sep=`, convenção decimal única por arquivo (D-1), mapeamento automático e
+editável das colunas, relatório de cada linha recusada (linha, coluna, motivo) e ida e volta
+exata com os próprios CSVs nos dois formatos. Os valores importados são gravados na folha como
+texto sem ambiguidade (`1,234` vira `1,2340`), para que a regra D-1 não os recuse depois.
+
 **Ponto de parada:** ao final do M6 eu paro, rodo o app e mostro capturas, conforme o plano.
 Também posso parar ao fim de cada marco, se você preferir revisar aos poucos.
 

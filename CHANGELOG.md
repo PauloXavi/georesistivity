@@ -44,6 +44,12 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
 - Field-sheet **templates** with AB/2, MN, and marker colours (`georesistivity.storage`).
 - `georesistivity app --no-autosave`, `GEORESISTIVITY_HOME`, and `GEORESISTIVITY_AUTOSAVE`.
 - Field-sheet rows with only DeltaV or only I are reported as incomplete instead of invalid.
+- **Import CSV** tab (`georesistivity.csv_import`): UTF-8 or Windows-1252 files with `;`, `,`,
+  or tab, one decimal convention per file (D-1), automatic and editable column mapping,
+  every rejected row reported with line, column, and reason, and import into the field sheet
+  (replace or add) or the single measurements. Exports round-trip exactly.
+- `validation.parse_number_with_decimal`, `validation.is_ambiguous_number_text`, and
+  `formatting.format_for_input` for values that read back unambiguously.
 
 ### Changed
 

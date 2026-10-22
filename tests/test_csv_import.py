@@ -1,6 +1,7 @@
 """Tests for CSV import into the field sheet and the single measurements."""
 
 import codecs
+from pathlib import Path
 
 import pytest
 
@@ -429,3 +430,23 @@ def test_measurement_export_round_trips_into_the_same_measurements(dialect: str)
 
     assert imported.issues == ()
     assert list(imported.measurements) == original
+
+
+def test_bundled_sample_dataset_imports_as_measurements() -> None:
+    path = Path(__file__).resolve().parents[1] / "examples" / "sample_measurements.csv"
+    data = read_csv(path.read_bytes())
+    mapping = guess_mapping(data.header, "measurements")
+
+    result = import_measurements(
+        data,
+        mapping,
+        decimal=detect_decimal(data, [mapping["delta_v"], mapping["current"]]),
+        voltage_unit="V",
+        current_unit="A",
+    )
+
+    assert guess_target(data.header) == "measurements"
+    assert result.issues == ()
+    assert len(result.measurements) == 8
+    assert result.measurements[0].spacing_ab2_original == 1.0
+    assert result.measurements[0].geometric_factor_source == "synthetic demonstration data"
