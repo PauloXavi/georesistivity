@@ -7,6 +7,14 @@ This module only renders widgets and forwards user actions. Input rules live in
 import streamlit as st
 
 from georesistivity.app import state
+from georesistivity.app.common import (
+    CURRENT_UNITS,
+    LENGTH_UNITS,
+    OHM_METER,
+    VOLTAGE_UNITS,
+    WARNING_MESSAGES,
+)
+from georesistivity.app.field_sheet_view import render_field_sheet
 from georesistivity.formatting import NumberFormat, format_full_precision, format_significant
 from georesistivity.geometry import ARRAY_PARAMETERS, ArrayType, GeometryParameter
 from georesistivity.io import (
@@ -14,7 +22,7 @@ from georesistivity.io import (
     measurement_results_to_csv,
     measurement_results_to_dataframe,
 )
-from georesistivity.models import MeasurementField, MeasurementResult, MeasurementWarning
+from georesistivity.models import MeasurementField, MeasurementResult
 from georesistivity.plotting import (
     PlotScale,
     create_resistivity_figure,
@@ -26,11 +34,6 @@ from georesistivity.services import (
     calculate_geometric_factor,
     evaluate_submission,
 )
-
-VOLTAGE_UNITS = ("V", "mV", "µV")
-CURRENT_UNITS = ("A", "mA", "µA")
-LENGTH_UNITS = ("m", "cm", "mm", "km")
-OHM_METER = "\u03a9\u00b7m"
 
 NUMBER_FORMATS: dict[NumberFormat, str] = {
     "pt-BR": "pt-BR (1.234,5)",
@@ -46,17 +49,6 @@ FIELD_LABELS: dict[MeasurementField, str] = {
     "geometric_factor": "Geometric factor K",
     "spacing_ab2": "AB/2",
     "mn": "MN",
-}
-WARNING_MESSAGES: dict[MeasurementWarning, str] = {
-    MeasurementWarning.NEGATIVE_APPARENT_RESISTIVITY: (
-        "Negative apparent resistivity. Check the polarity of the potential electrodes, "
-        "the current direction, and the cable connections."
-    ),
-    MeasurementWarning.SCHLUMBERGER_WIDE_MN: (
-        "MN is wide for this AB/2: (AB/2)/(MN/2) is below 4. K uses the exact formula and "
-        "stays correct, but the reading averages the potential over a wide interval; "
-        "consider a smaller MN at this spacing."
-    ),
 }
 K_MODES: dict[GeometricFactorMode, str] = {
     "external": "Enter K",
@@ -482,14 +474,17 @@ def main() -> None:
         "and current, with the geometric factor entered or calculated from the geometry."
     )
 
-    render_measurement_form()
-    render_latest_result()
-    render_k_calculator()
-    st.divider()
-
-    results = state.measurements()
-    render_measurements(results)
-    render_plot(results)
+    sheet_tab, single_tab = st.tabs(["Field sheet (VES)", "Single measurement"])
+    with sheet_tab:
+        render_field_sheet()
+    with single_tab:
+        render_measurement_form()
+        render_latest_result()
+        render_k_calculator()
+        st.divider()
+        results = state.measurements()
+        render_measurements(results)
+        render_plot(results)
 
 
 if __name__ == "__main__":

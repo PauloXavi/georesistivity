@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 pytest.importorskip("streamlit")
@@ -9,6 +10,8 @@ pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest
 
 from georesistivity.app import MAIN_SCRIPT
+from georesistivity.app.field_sheet_view import rows_from_dataframe, rows_to_dataframe
+from georesistivity.field_sheet import SheetRow
 
 COMPATIBILITY_SCRIPT = Path(__file__).resolve().parents[1] / "app" / "app.py"
 
@@ -251,3 +254,143 @@ def test_k_calculator_reports_invalid_parameters(app: AppTest) -> None:
     app.button(key="calculate_k").click().run()
 
     assert "**n (dimensionless):** must be positive" in error_text(app)
+
+
+def sheet_app(*rows: SheetRow) -> AppTest:
+    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test.session_state["sheet_rows"] = list(rows)
+    app_test.run()
+    return app_test
+
+
+RHO_COLUMN = "\u03c1a [\u03a9\u00b7m]"
+
+
+def points_table(app_test: AppTest) -> pd.DataFrame:
+    # The editor is also a Dataframe element; the points table is the one without a key.
+    return next(frame.value for frame in app_test.dataframe if frame.key is None)
+
+
+def test_field_sheet_starts_from_the_45_template_positions(app: AppTest) -> None:
+    rows = app.session_state["sheet_rows"]
+
+    assert len(rows) == 45
+    assert rows[0] == SheetRow(ab2="1", mn="0,5")
+    assert any("Type ΔV and I in a row" in str(info.value) for info in app.info)
+
+
+def test_field_sheet_shows_points_and_the_curve() -> None:
+    app_test = sheet_app(
+        SheetRow(marker="VD", ab2="1", mn="0,5", delta_v="80", current="40"),
+        SheetRow(ab2="5,5", mn="0,5", delta_v="9", current="50"),
+        SheetRow(ab2="5,5", mn="2", delta_v="33", current="50"),
+        SheetRow(ab2="7,5", mn="2"),
+    )
+
+    assert not app_test.exception
+    assert not app_test.error
+    assert any("3 positions read at 2 AB/2 spacings" in str(c.value) for c in app_test.caption)
+    table = points_table(app_test)
+    assert table["AB/2 [m]"].tolist() == ["1", "5,5", "5,5"]
+    assert table["MN [m]"].tolist() == ["0,5", "0,5", "2"]
+    assert table["Marker"].tolist() == ["VD", "", ""]
+    assert table[RHO_COLUMN].tolist()[0] == "11,78"
+    assert len(app_test.get("image")) == 1
+
+
+def test_field_sheet_reports_invalid_rows_by_number() -> None:
+    app_test = sheet_app(
+        SheetRow(ab2="1", mn="0,5", delta_v="1,000", current="40"),
+        SheetRow(ab2="1,3", mn="0,5", delta_v="80", current="40", excluded=True),
+    )
+
+    errors = error_text(app_test)
+    assert "**Row 1** — ΔV: ambiguous value" in errors
+    assert "**Row 2** — Exclusion reason: is required to exclude a reading" in errors
+
+
+def test_field_sheet_flags_high_variation_with_the_selected_limit() -> None:
+    app_test = sheet_app(
+        SheetRow(ab2="10", mn="2", delta_v="80", current="40"),
+        SheetRow(ab2="10", mn="2", delta_v="88", current="40"),
+    )
+
+    assert points_table(app_test)["Warnings"].tolist() == ["CV above limit"]
+
+    app_test.number_input(key="sheet_cv_limit_percent").set_value(10.0).run()
+
+    assert points_table(app_test)["Warnings"].tolist() == [""]
+
+
+def test_field_sheet_uses_the_selected_units() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+    millivolts = points_table(app_test)[RHO_COLUMN].tolist()[0]
+
+    app_test.selectbox(key="sheet_voltage_unit").set_value("V").run()
+
+    assert millivolts == "11,78"
+    assert points_table(app_test)[RHO_COLUMN].tolist()[0] == "11.780"  # 11 780.97 to 4 digits
+
+
+def test_field_sheet_warns_about_points_left_off_the_log_curve() -> None:
+    app_test = sheet_app(
+        SheetRow(ab2="1", mn="0,5", delta_v="-80", current="40"),
+        SheetRow(ab2="1,3", mn="0,5", delta_v="80", current="40"),
+    )
+
+    assert any("not positive: AB/2 = 1 m" in str(w.value) for w in app_test.warning)
+    assert len(app_test.get("image")) == 1
+
+
+def test_field_sheet_without_positive_points_draws_no_curve() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="-80", current="40"))
+
+    assert not app_test.exception
+    assert app_test.get("image") == []
+
+
+def test_new_sheet_requires_confirmation() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+
+    app_test.button(key="sheet_new").click().run()
+    app_test.button(key="sheet_new_cancel").click().run()
+    assert len(app_test.session_state["sheet_rows"]) == 1
+
+    app_test.button(key="sheet_new").click().run()
+    app_test.button(key="sheet_new_confirm").click().run()
+
+    assert len(app_test.session_state["sheet_rows"]) == 45
+    assert app_test.session_state["sheet_version"] == 1
+    assert [frame.key for frame in app_test.dataframe] == ["sheet_editor_1"]
+
+
+def test_rows_from_editor_treat_missing_cells_as_blank() -> None:
+    edited = rows_to_dataframe([SheetRow(ab2="1", mn="0,5", delta_v="80", current="40")])
+    added = pd.DataFrame(
+        [
+            {
+                "Marker": None,
+                "AB/2 [m]": "10",
+                "MN [m]": "2",
+                "ΔV": float("nan"),
+                "I": None,
+                "Exclude": None,
+                "Exclusion reason": None,
+            }
+        ]
+    )
+
+    rows = rows_from_dataframe(pd.concat([edited, added], ignore_index=True))
+
+    assert rows == [
+        SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),
+        SheetRow(ab2="10", mn="2"),
+    ]
+
+
+def test_field_sheet_summary_uses_singular_for_one_position() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+
+    assert any(
+        str(caption.value) == "1 position read at 1 AB/2 spacing." for caption in app_test.caption
+    )

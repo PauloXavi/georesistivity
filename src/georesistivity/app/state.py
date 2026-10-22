@@ -4,10 +4,12 @@ from typing import Literal, cast
 
 import streamlit as st
 
+from georesistivity.field_sheet import SheetRow, template_rows
 from georesistivity.formatting import NumberFormat
 from georesistivity.io import CsvDialect
 from georesistivity.models import MeasurementResult
 from georesistivity.services import GeometricFactorMode, MeasurementInput
+from georesistivity.stacking import DEFAULT_CV_THRESHOLD
 
 # Session keys. Widget keys are session keys too, so they are defined here as well.
 MEASUREMENTS = "measurements"
@@ -31,6 +33,13 @@ MN = "mn_raw"
 MN_UNIT = "mn_unit"
 K_MODE = "geometric_factor_mode"
 
+SHEET_ROWS = "sheet_rows"
+SHEET_VERSION = "sheet_version"
+SHEET_VOLTAGE_UNIT = "sheet_voltage_unit"
+SHEET_CURRENT_UNIT = "sheet_current_unit"
+SHEET_CV_LIMIT = "sheet_cv_limit_percent"
+SHEET_CONFIRM_NEW = "sheet_confirm_new"
+
 K_CALCULATOR_ARRAY = "k_calculator_array"
 K_CALCULATOR_UNIT = "k_calculator_unit"
 K_CALCULATOR_PREFIX = "k_calculator_"
@@ -53,6 +62,12 @@ def initialize() -> None:
     st.session_state.setdefault(NUMBER_FORMAT, "pt-BR")
     st.session_state.setdefault(CSV_DIALECT, "standard")
     st.session_state.setdefault(K_MODE, "external")
+    st.session_state.setdefault(SHEET_ROWS, template_rows())
+    st.session_state.setdefault(SHEET_VERSION, 0)
+    st.session_state.setdefault(SHEET_VOLTAGE_UNIT, "mV")
+    st.session_state.setdefault(SHEET_CURRENT_UNIT, "mA")
+    st.session_state.setdefault(SHEET_CV_LIMIT, 100.0 * DEFAULT_CV_THRESHOLD)
+    st.session_state.setdefault(SHEET_CONFIRM_NEW, False)
 
 
 def measurements() -> list[MeasurementResult]:
@@ -131,3 +146,39 @@ def clear_value_fields() -> None:
     """Empty the numeric fields. Only valid inside a widget callback."""
     for key in VALUE_FIELDS:
         st.session_state[key] = ""
+
+
+def sheet_rows() -> list[SheetRow]:
+    """Rows the field-sheet editor starts from (the template or a reset sheet)."""
+    return cast(list[SheetRow], st.session_state[SHEET_ROWS])
+
+
+def sheet_editor_key() -> str:
+    """Key of the field-sheet editor; a new key discards the editor's edits."""
+    return f"sheet_editor_{st.session_state[SHEET_VERSION]}"
+
+
+def reset_sheet() -> None:
+    """Start a new, empty field sheet in the current number format."""
+    st.session_state[SHEET_ROWS] = template_rows(number_format())
+    st.session_state[SHEET_VERSION] = cast(int, st.session_state[SHEET_VERSION]) + 1
+    st.session_state[SHEET_CONFIRM_NEW] = False
+
+
+def sheet_units() -> tuple[str, str]:
+    """Units of DeltaV and I selected for the field sheet."""
+    state = st.session_state
+    return cast(str, state[SHEET_VOLTAGE_UNIT]), cast(str, state[SHEET_CURRENT_UNIT])
+
+
+def sheet_cv_threshold() -> float:
+    """Coefficient-of-variation limit of the field sheet, as a fraction."""
+    return cast(float, st.session_state[SHEET_CV_LIMIT]) / 100.0
+
+
+def sheet_confirm_new() -> bool:
+    return cast(bool, st.session_state[SHEET_CONFIRM_NEW])
+
+
+def set_sheet_confirm_new(value: bool) -> None:
+    st.session_state[SHEET_CONFIRM_NEW] = value
