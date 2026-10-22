@@ -27,9 +27,20 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
   the table and CSV (C-05).
 - `MeasurementWarning.SCHLUMBERGER_WIDE_MN` for (AB/2)/(MN/2) below 4.
 - `units.split_quantity` and `format_significant(grouping=False)`.
+- **Field sheet (VES)** tab: a digital Schlumberger sheet pre-filled with the 45 positions of
+  the standard paper sheet, overlap readings by MN segment, repeated readings combined as the
+  mean of DeltaV/I (D-7), exclusions with a mandatory reason, marker colours, live table of
+  positions and log-log curve with equal decades, and points and readings CSV exports.
+- `georesistivity.stacking`, `georesistivity.survey`, and `georesistivity.field_sheet` for
+  repeated-reading statistics, sounding points, and the sheet rows.
+- `plotting.create_sounding_figure` and `io.sounding_points_to_csv` /
+  `io.sounding_readings_to_csv`.
+- `MeasurementWarning.STACK_HIGH_VARIATION` and `STACK_MIXED_SIGNS`.
 
 ### Changed
 
+- The interface opens on the field sheet; the single-measurement form, K calculator, and
+  session list moved to the **Single measurement** tab.
 - The Streamlit interface moved into the package as `georesistivity.app`, with typed session
   access in `georesistivity.app.state`. `app/app.py` remains as a compatibility entry point.
 - The table and CSV gain `MN`, `MN unit`, and `MN [m]` columns.

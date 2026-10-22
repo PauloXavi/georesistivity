@@ -215,6 +215,34 @@ Use **Excel pt-BR** to open the file directly in Microsoft Excel configured for 
 Portuguese. Free-text cells that start with `=`, `+`, `-`, `@`, a tab, or a carriage return are
 prefixed with an apostrophe so that spreadsheet applications do not evaluate them as formulas.
 
+## Field Sheet (VES)
+
+The **Field sheet (VES)** tab is a digital version of the paper Schlumberger sounding sheet:
+
+- The table starts with the 45 (AB/2, MN) positions of the standard sheet, AB/2 from 1.0 to
+  320 m and MN from 0.5 to 100 m, with K calculated for each position.
+- Type ΔV and I in the rows you read; blank rows are ignored. The units of ΔV and I are
+  selected above the table.
+- **Overlap readings:** the same AB/2 read with the next MN is a separate row. Each MN forms
+  its own segment of the curve, so the shift between segments stays visible.
+- **Repeated readings:** add a row with the same AB/2 and MN. Readings at one position are
+  combined as $\rho_a = K \cdot \text{mean}(\Delta V_i / I_i)$, so every reading has the
+  same weight. The coefficient of variation is shown and flagged above a selectable limit (5% by
+  default), as are readings that mix signs.
+- **Exclusion:** a reading can be excluded only with a reason. It stays in the readings export
+  but not in the result.
+- The **Marker** column records the cable or reel marker colour of each AB/2.
+- Invalid rows are listed by row number and column without blocking the other rows.
+- The table of positions and the curve update as values are typed. The curve uses log-log
+  axes with whole decades (at least 1-1000 m and 1-10 000 Ω·m) and equal decade lengths on
+  both axes, as on bilog paper, so it can be compared with master curves. Points with quality
+  warnings are circled in red.
+- **Export points (CSV)** gives one row per position with its statistics; **Export readings
+  (CSV)** gives every reading, including excluded ones and their reasons.
+
+The sheet lives in the browser session for now; project files with autosave are the next
+milestone.
+
 ## Visualization Behavior
 
 The **Apparent Resistivity vs. Electrode Spacing** graph is displayed only when at least two
@@ -361,16 +389,21 @@ GeoResistivity/
 │   └── app.py              # compatibility entry point for `streamlit run`
 ├── src/georesistivity/
 │   ├── app/                # Streamlit interface
+│   │   ├── common.py
+│   │   ├── field_sheet_view.py
 │   │   ├── main.py
 │   │   └── state.py
 │   ├── cli.py
 │   ├── core.py
+│   ├── field_sheet.py
 │   ├── formatting.py
 │   ├── geometry.py
 │   ├── io.py
 │   ├── models.py
 │   ├── plotting.py
 │   ├── services.py
+│   ├── stacking.py
+│   ├── survey.py
 │   ├── units.py
 │   └── validation.py
 ├── tests/
@@ -381,12 +414,15 @@ GeoResistivity/
 
 | Path | Responsibility |
 | --- | --- |
-| `src/georesistivity/app/` | Streamlit presentation layer (`main.py`) and typed session state (`state.py`). |
+| `src/georesistivity/app/` | Streamlit presentation layer (`main.py`, `field_sheet_view.py`), shared labels (`common.py`), and typed session state (`state.py`). |
 | `src/georesistivity/services.py` | Application use cases shared by the interfaces, without Streamlit. |
 | `src/georesistivity/cli.py` | The `georesistivity` command. |
 | `app/app.py` | Compatibility entry point for `streamlit run app/app.py`. |
 | `src/georesistivity/core.py` | Pure scientific calculation and measurement processing. |
 | `src/georesistivity/geometry.py` | Geometric factor $K$ of four-electrode arrays and the field-sheet K table. |
+| `src/georesistivity/survey.py` | Sounding points (AB/2, MN), readings, exclusions, and their combined result. |
+| `src/georesistivity/stacking.py` | Statistics of repeated readings. |
+| `src/georesistivity/field_sheet.py` | Rows of the digital field sheet turned into sounding points. |
 | `src/georesistivity/models.py` | Immutable measurement and result models, warnings, and field errors. |
 | `src/georesistivity/units.py` | Explicit conversion of supported units to SI. |
 | `src/georesistivity/validation.py` | Safe numeric parsing and finite-value validation. |
@@ -433,10 +469,11 @@ python -m mypy
 python -m pip_audit --skip-editable
 ```
 
-The current suite contains **356 automated tests** with branch coverage enforced at 95%,
+The current suite contains **421 automated tests** with branch coverage enforced at 95%,
 covering:
 
 - scientific calculation and sign policy;
+- sounding points, repeated readings, exclusions, and the digital field sheet;
 - geometric factors, including the field-sheet K table and every array against the general
   formula;
 - unit conversions;
@@ -475,7 +512,6 @@ GeoResistivity deliberately keeps its scientific scope narrow. The current versi
 - determine electrode geometry automatically;
 - calculate $K$ in the measurement form for arrays other than Schlumberger (use the K
   calculator or `georesistivity k`, then enter $K$);
-- implement a specific vertical electrical sounding (SEV) workflow;
 - perform inversion;
 - construct pseudosections;
 - estimate true resistivity;

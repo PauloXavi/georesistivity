@@ -427,6 +427,14 @@ geral, modo "Calcular K (Schlumberger)" na tela, MN gravado nas medições, calc
 comandos `georesistivity k`, `k table` e `calc`. Os 45 valores de K da folha de campo viraram
 teste de regressão.
 
+**Andamento:** M3 concluído em 2026-10-22: aba "Folha de campo (SEV)" com os 45 pares
+(AB/2, MN) da folha, leituras de superposição como segmentos de MN, leituras repetidas pela
+média de ΔV/I com CV e limite configurável, exclusão com motivo, coluna de cor, curva log-log ao
+vivo com décadas iguais e exportação de pontos e leituras. A camada de aplicação da folha ficou
+em `field_sheet.py` (em vez de `services.py`), e o modelo de sondagem em `survey.py`.
+Observação: o `AppTest` do Streamlit não digita em `st.data_editor`; a lógica da folha é
+testada sem interface e a digitação foi conferida no navegador.
+
 **Ponto de parada:** ao final do M6 eu paro, rodo o app e mostro capturas, conforme o plano.
 Também posso parar ao fim de cada marco, se você preferir revisar aos poucos.
 
