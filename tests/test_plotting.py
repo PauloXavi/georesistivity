@@ -10,6 +10,13 @@ from georesistivity import (
     find_log_incompatible_points,
     prepare_plot_points,
 )
+from georesistivity.field_sheet import SheetRow, evaluate_sheet
+from georesistivity.plotting import (
+    create_sounding_figure,
+    find_unplottable_sounding_points,
+    sounding_segments,
+)
+from georesistivity.survey import PointResult
 
 
 def make_result(delta_v: float, spacing: float | None):
@@ -86,3 +93,81 @@ def test_figure_rejects_unknown_scale() -> None:
 
     with pytest.raises(ValueError, match="unsupported plot scale"):
         create_resistivity_figure(points, scale="semilog")  # type: ignore[arg-type]
+
+
+def sounding(*rows: SheetRow) -> tuple[PointResult, ...]:
+    return evaluate_sheet(rows, voltage_unit="mV", current_unit="mA").points
+
+
+OVERLAP_SOUNDING = (
+    SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),
+    SheetRow(ab2="5,5", mn="0,5", delta_v="9", current="50"),
+    SheetRow(ab2="5,5", mn="2", delta_v="33", current="50"),
+    SheetRow(ab2="10", mn="2", delta_v="12", current="50"),
+)
+
+
+def test_sounding_segments_group_by_mn_and_order_by_ab2() -> None:
+    segments = sounding_segments(sounding(*OVERLAP_SOUNDING))
+
+    assert list(segments) == [0.5, 2.0]
+    assert [point.point.ab2_m for point in segments[0.5]] == [1.0, 5.5]
+    assert [point.point.ab2_m for point in segments[2.0]] == [5.5, 10.0]
+
+
+def test_non_positive_and_empty_points_are_left_out_of_the_curve() -> None:
+    points = sounding(
+        SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),
+        SheetRow(ab2="1,3", mn="0,5", delta_v="-80", current="40"),
+        SheetRow(ab2="1,8", mn="0,5", delta_v="80", current="40", excluded=True, reason="x"),
+    )
+
+    assert [p.point.ab2_m for p in sounding_segments(points)[0.5]] == [1.0]
+    assert [p.point.ab2_m for p in find_unplottable_sounding_points(points)] == [1.3]
+
+
+def test_sounding_figure_uses_equal_decades_like_bilog_paper() -> None:
+    figure = create_sounding_figure(sounding(*OVERLAP_SOUNDING))
+    axes = figure.axes[0]
+
+    assert axes.get_xscale() == "log"
+    assert axes.get_yscale() == "log"
+    assert axes.get_xlim() == (1.0, 1000.0)
+    assert axes.get_ylim() == (1.0, 10000.0)
+    assert axes.get_aspect() == 1.0
+    assert axes.get_ylabel() == "Apparent resistivity [Ω·m]"
+    assert [text.get_text() for text in axes.get_legend().get_texts()] == [
+        "MN = 0,5 m",
+        "MN = 2 m",
+    ]
+
+
+def test_sounding_figure_extends_axes_to_whole_decades_beyond_the_paper() -> None:
+    points = sounding(
+        SheetRow(ab2="320", mn="100", delta_v="9000", current="10"),
+        SheetRow(ab2="1", mn="0,5", delta_v="0,01", current="400"),
+    )
+
+    axes = create_sounding_figure(points, number_format="en").axes[0]
+
+    assert axes.get_xlim() == (1.0, 1000.0)
+    assert axes.get_ylim() == (0.0001, 10000000.0)  # rho_a from 1.5e-4 to 2.8e6
+
+
+def test_sounding_figure_circles_points_with_warnings() -> None:
+    points = sounding(
+        SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),
+        SheetRow(ab2="1,3", mn="0,5", delta_v="80", current="40"),
+        SheetRow(ab2="1,3", mn="0,5", delta_v="95", current="40"),
+    )
+
+    legend = create_sounding_figure(points).axes[0].get_legend()
+
+    assert "Quality warning" in [text.get_text() for text in legend.get_texts()]
+
+
+def test_sounding_figure_needs_a_plottable_point() -> None:
+    points = sounding(SheetRow(ab2="1", mn="0,5", delta_v="-80", current="40"))
+
+    with pytest.raises(ValueError, match="positive apparent resistivity"):
+        create_sounding_figure(points)

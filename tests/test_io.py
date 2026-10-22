@@ -15,6 +15,16 @@ from georesistivity import (
     measurement_results_to_csv,
     measurement_results_to_dataframe,
 )
+from georesistivity.field_sheet import SheetRow, evaluate_sheet
+from georesistivity.io import (
+    SOUNDING_POINT_COLUMNS,
+    SOUNDING_READING_COLUMNS,
+    sounding_points_to_csv,
+    sounding_points_to_dataframe,
+    sounding_readings_to_csv,
+    sounding_readings_to_dataframe,
+)
+from georesistivity.survey import PointResult
 
 
 def make_result(
@@ -206,3 +216,53 @@ def test_mn_is_exported_with_original_and_si_values() -> None:
     assert rows[0]["MN"] == "200.0"
     assert rows[0]["MN unit"] == "cm"
     assert rows[0]["MN [m]"] == "2.0"
+
+
+def sounding_points() -> tuple[PointResult, ...]:
+    rows = (
+        SheetRow(marker="VD", ab2="10", mn="2", delta_v="80", current="40"),
+        SheetRow(marker="VD", ab2="10", mn="2", delta_v="81,6", current="40"),
+        SheetRow(ab2="10", mn="2", delta_v="400", current="40", excluded=True, reason="=noise"),
+        SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),
+    )
+    return evaluate_sheet(rows, voltage_unit="mV", current_unit="mA").points
+
+
+def test_sounding_points_table_has_one_row_per_position() -> None:
+    dataframe = sounding_points_to_dataframe(sounding_points())
+
+    assert tuple(dataframe.columns) == SOUNDING_POINT_COLUMNS
+    assert dataframe["AB/2 [m]"].tolist() == [1.0, 10.0]
+    row = dataframe.iloc[1]
+    assert row["Marker"] == "VD"
+    assert row["Readings used"] == 2
+    assert row["Readings excluded"] == 1
+    assert row["R mean [ohm]"] == pytest.approx(2.02)
+    assert row["CV [%]"] == pytest.approx(100 * 0.04 / 2.02 / 2**0.5, rel=1e-6)
+    assert row["rho_a [ohm.m]"] == pytest.approx(row["K [m]"] * 2.02)
+    assert pd.isna(dataframe.iloc[0]["CV [%]"])
+
+
+def test_sounding_readings_table_keeps_excluded_readings() -> None:
+    dataframe = sounding_readings_to_dataframe(sounding_points())
+
+    assert tuple(dataframe.columns) == SOUNDING_READING_COLUMNS
+    assert len(dataframe) == 4
+    excluded = dataframe[dataframe["Excluded"]]
+    assert excluded["Exclusion reason"].tolist() == ["=noise"]
+    assert excluded["Reading"].tolist() == [3]
+
+
+def test_sounding_csv_exports_protect_text_and_support_excel_pt_br() -> None:
+    readings = sounding_readings_to_csv(sounding_points())
+    points = sounding_points_to_csv(sounding_points(), dialect="excel-pt-br")
+
+    rows = list(csv.DictReader(StringIO(readings)))
+    assert [row["Exclusion reason"] for row in rows if row["Excluded"] == "True"] == ["'=noise"]
+    assert points.startswith("﻿AB/2 [m];MN [m];Marker;")
+    assert "\n10,0;2,0;VD;" in points
+
+
+def test_sounding_exports_reject_unknown_dialect() -> None:
+    with pytest.raises(ValueError, match="unsupported CSV dialect"):
+        sounding_points_to_csv(sounding_points(), dialect="tsv")  # type: ignore[arg-type]
