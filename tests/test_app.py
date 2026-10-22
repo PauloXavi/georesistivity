@@ -8,12 +8,14 @@ pytest.importorskip("streamlit")
 
 from streamlit.testing.v1 import AppTest
 
-APP_PATH = Path(__file__).resolve().parents[1] / "app" / "app.py"
+from georesistivity.app import MAIN_SCRIPT
+
+COMPATIBILITY_SCRIPT = Path(__file__).resolve().parents[1] / "app" / "app.py"
 
 
 @pytest.fixture
 def app() -> AppTest:
-    app_test = AppTest.from_file(str(APP_PATH), default_timeout=30)
+    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
     app_test.run()
     return app_test
 
@@ -172,3 +174,12 @@ def test_spacing_plot_appears_with_two_spaced_measurements(app: AppTest) -> None
 
     assert not app.exception
     assert any(subheader.value == "Spacing Plot" for subheader in app.subheader)
+
+
+def test_compatibility_script_runs_the_same_interface() -> None:
+    app_test = AppTest.from_file(str(COMPATIBILITY_SCRIPT), default_timeout=30)
+    app_test.run()
+    submit(app_test, delta_v="125", current="35", geometric_factor="625")
+
+    assert not app_test.exception
+    assert app_test.metric[0].value == "2.232 \u03a9\u00b7m"

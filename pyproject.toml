@@ -67,7 +67,8 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["georesistivity", "app"]
+# Directories, not package names, so scripts run by Streamlit AppTest as "__main__" count.
+source = ["src/georesistivity", "app"]
 
 [tool.coverage.report]
 fail_under = 95
