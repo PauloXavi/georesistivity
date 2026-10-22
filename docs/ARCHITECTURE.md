@@ -419,6 +419,10 @@ em Python (seção 10), `argparse` (seção 11), alerta de CV em 5% (seção 7.2
 | **M5 — Importação CSV** | `csv_import.py`, pré-visualização, mapeamento, relatório de erros, ida e volta. | Importar o CSV de exemplo e um CSV do Excel pt-BR. |
 | **M6 — Bilíngue** | `i18n/`, seletor de idioma, testes de completude. | Trocar PT-BR ↔ EN sem recarregar dados. |
 
+**Andamento:** M1 concluído em 2026-10-22: interface em `georesistivity.app`, regras em
+`services.py`, comando `georesistivity app` (só `localhost` por padrão; `--lan` para o
+tablet).
+
 **Ponto de parada:** ao final do M6 eu paro, rodo o app e mostro capturas, conforme o plano.
 Também posso parar ao fim de cada marco, se você preferir revisar aos poucos.
 

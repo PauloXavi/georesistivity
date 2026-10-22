@@ -213,13 +213,23 @@ On Windows, activate the environment with:
 .venv\Scripts\activate
 ```
 
-Start the application from the repository root, so that `.streamlit/config.toml` is applied:
+Start the application:
 
 ```bash
-python -m streamlit run app/app.py
+georesistivity app
 ```
 
-Streamlit will print the local application URL after startup.
+The command works from any directory and opens the interface in the browser. It listens on
+this computer only. Useful options:
+
+| Option | Effect |
+| --- | --- |
+| `--lan` | Also accept connections from other devices on the local network, for example a tablet connected to the laptop's hotspot in the field. Use it only on a trusted network. |
+| `--port 8600` | Use another port (default `8501`). |
+| `--no-browser` | Do not open a browser window. |
+
+`python -m georesistivity app` is equivalent. During development, `python -m streamlit run
+app/app.py` from the repository root reloads the interface when files change.
 
 To use only the scientific library, without the web interface, install it without extras:
 
@@ -283,13 +293,18 @@ purposes.
 ```text
 GeoResistivity/
 ├── app/
-│   └── app.py
+│   └── app.py              # compatibility entry point for `streamlit run`
 ├── src/georesistivity/
+│   ├── app/                # Streamlit interface
+│   │   ├── main.py
+│   │   └── state.py
+│   ├── cli.py
 │   ├── core.py
 │   ├── formatting.py
 │   ├── io.py
 │   ├── models.py
 │   ├── plotting.py
+│   ├── services.py
 │   ├── units.py
 │   └── validation.py
 ├── tests/
@@ -300,7 +315,10 @@ GeoResistivity/
 
 | Path | Responsibility |
 | --- | --- |
-| `app/` | Streamlit presentation layer and session interaction. |
+| `src/georesistivity/app/` | Streamlit presentation layer (`main.py`) and typed session state (`state.py`). |
+| `src/georesistivity/services.py` | Application use cases shared by the interfaces, without Streamlit. |
+| `src/georesistivity/cli.py` | The `georesistivity` command. |
+| `app/app.py` | Compatibility entry point for `streamlit run app/app.py`. |
 | `src/georesistivity/core.py` | Pure scientific calculation and measurement processing. |
 | `src/georesistivity/models.py` | Immutable measurement and result models, warnings, and field errors. |
 | `src/georesistivity/units.py` | Explicit conversion of supported units to SI. |
@@ -314,8 +332,10 @@ GeoResistivity/
 | `docs/` | Project documentation, including the [technical audit](docs/AUDIT.md). |
 
 The modern application keeps the Streamlit presentation layer separate from the scientific
-and data-processing modules. The scientific calculation can therefore be tested without the
-web interface, and the library does not depend on Streamlit. Importing the package loads
+and data-processing modules: the interface only renders widgets and forwards actions to
+`services.py`, so the scientific calculation and the input rules are tested without the web
+interface, and the library does not depend on Streamlit. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layered design and the roadmap. Importing the package loads
 pandas and Matplotlib only when a tabular or plotting function is used.
 
 ## Project History
@@ -346,7 +366,7 @@ python -m mypy
 python -m pip_audit --skip-editable
 ```
 
-The current suite contains **187 automated tests** with branch coverage enforced at 95%,
+The current suite contains **211 automated tests** with branch coverage enforced at 95%,
 covering:
 
 - scientific calculation and sign policy;
@@ -356,6 +376,8 @@ covering:
 - result formatting;
 - tabular and CSV transformations, including CSV dialects and formula-injection protection;
 - plotting-data preparation and scale validation;
+- application use cases, without the interface;
+- the command line;
 - the Streamlit interface, through Streamlit's `AppTest`;
 - properties checked with Hypothesis, such as rejection of every thousands-like pattern.
 

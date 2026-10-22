@@ -12,12 +12,15 @@ from georesistivity.app import MAIN_SCRIPT
 DEFAULT_PORT = 8501
 
 # Applied on every launch, so they hold even when the repository's .streamlit/config.toml is
-# not in the working directory.
+# not in the working directory. File watching only serves development, where
+# `streamlit run app/app.py` keeps reloading on save.
 _STREAMLIT_SETTINGS = (
     "--browser.gatherUsageStats",
     "false",
     "--client.toolbarMode",
     "viewer",
+    "--server.fileWatcherType",
+    "none",
 )
 
 LAN_WARNING = (

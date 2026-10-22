@@ -43,6 +43,7 @@ def test_app_listens_on_this_computer_only_by_default() -> None:
     assert _option(command, "--server.headless") == "false"
     assert _option(command, "--browser.gatherUsageStats") == "false"
     assert _option(command, "--client.toolbarMode") == "viewer"
+    assert _option(command, "--server.fileWatcherType") == "none"
 
 
 def test_lan_mode_listens_on_all_interfaces() -> None:

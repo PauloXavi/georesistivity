@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Audit finding
 IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
 
+## [Unreleased]
+
+### Added
+
+- `georesistivity app` command (also `python -m georesistivity app`) that starts the interface
+  from any directory, with `--lan`, `--port`, and `--no-browser` options.
+- `georesistivity.services`: Streamlit-free use cases for evaluating a measurement
+  submission (`MeasurementInput`, `SubmissionOutcome`, `evaluate_submission`).
+- Phase 3 architecture in `docs/ARCHITECTURE.md`.
+
+### Changed
+
+- The Streamlit interface moved into the package as `georesistivity.app`, with typed session
+  access in `georesistivity.app.state`. `app/app.py` remains as a compatibility entry point.
+- **Security:** the interface started with `georesistivity app` listens on `localhost` only.
+  Streamlit's default listens on every network interface; network access now requires
+  `--lan`.
+
 ## [0.2.0] - 2026-10-22
 
 ### Added
