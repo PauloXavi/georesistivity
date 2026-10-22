@@ -240,8 +240,36 @@ The **Field sheet (VES)** tab is a digital version of the paper Schlumberger sou
 - **Export points (CSV)** gives one row per position with its statistics; **Export readings
   (CSV)** gives every reading, including excluded ones and their reasons.
 
-The sheet lives in the browser session for now; project files with autosave are the next
-milestone.
+- A row with only ΔV or only I is shown as waiting for its other value, not as an error.
+- **Survey details** above the sheet record the header of the paper sheet: survey name,
+  SEV nº, date, area, place, operator, equipment, azimuth of the AB line, WGS 84 latitude and
+  longitude, and notes.
+
+## Projects, Autosave, and Templates
+
+Everything typed in a session (survey details, the field sheet exactly as typed, its units and
+CV limit, and the single measurements) can be saved as a project file and is autosaved on this
+computer.
+
+- **Save project** in the sidebar downloads a `.geores.json` file named after the SEV number
+  and place, for example `SEV-03-Fazenda_Teste.geores.json`. **Open project** loads one and
+  replaces the current session; a file that cannot be read or shown changes nothing and the
+  message names the problem, for example `sheet.rows[3].delta_v: must be text`.
+- **Autosave** writes this session's own copy under `~/GeoResistivity/autosave/` whenever the
+  content changes. Each session has its own file, so a laptop and a tablet connected in LAN
+  mode never overwrite each other. Files are written atomically, so a crash never leaves a
+  half-written copy.
+- After a reload or a crash, the sidebar of a new session lists the most recent autosave
+  copies (place, number of readings, time) with a **Restore** button.
+- **New sheet and templates**, below the sheet, saves the AB/2, MN, and marker colours of the
+  current sheet as a template (without readings) and starts new sheets from the standard
+  layout or a saved template. Templates live in `~/GeoResistivity/templates/`.
+
+The project file is plain, indented JSON with a `schema_version`. Calculated values are not
+stored; they are recomputed from the original values when the file is opened, and files from
+older versions are migrated automatically. Set `GEORESISTIVITY_HOME` to keep the local files
+in another folder, and start the interface with `--no-autosave` (or set
+`GEORESISTIVITY_AUTOSAVE=0`) to turn autosave off, for example on a shared server.
 
 ## Visualization Behavior
 
@@ -287,6 +315,7 @@ this computer only. Useful options:
 | `--lan` | Also accept connections from other devices on the local network, for example a tablet connected to the laptop's hotspot in the field. Use it only on a trusted network. |
 | `--port 8600` | Use another port (default `8501`). |
 | `--no-browser` | Do not open a browser window. |
+| `--no-autosave` | Do not keep autosave copies; save project files instead. |
 
 `python -m georesistivity app` is equivalent. During development, `python -m streamlit run
 app/app.py` from the repository root reloads the interface when files change.
@@ -392,6 +421,7 @@ GeoResistivity/
 │   │   ├── common.py
 │   │   ├── field_sheet_view.py
 │   │   ├── main.py
+│   │   ├── project_view.py
 │   │   └── state.py
 │   ├── cli.py
 │   ├── core.py
@@ -401,8 +431,10 @@ GeoResistivity/
 │   ├── io.py
 │   ├── models.py
 │   ├── plotting.py
+│   ├── project.py
 │   ├── services.py
 │   ├── stacking.py
+│   ├── storage.py
 │   ├── survey.py
 │   ├── units.py
 │   └── validation.py
@@ -422,6 +454,8 @@ GeoResistivity/
 | `src/georesistivity/geometry.py` | Geometric factor $K$ of four-electrode arrays and the field-sheet K table. |
 | `src/georesistivity/survey.py` | Sounding points (AB/2, MN), readings, exclusions, and their combined result. |
 | `src/georesistivity/stacking.py` | Statistics of repeated readings. |
+| `src/georesistivity/project.py` | Versioned `.geores.json` project files and sheet templates. |
+| `src/georesistivity/storage.py` | Local autosave copies and templates, written atomically. |
 | `src/georesistivity/field_sheet.py` | Rows of the digital field sheet turned into sounding points. |
 | `src/georesistivity/models.py` | Immutable measurement and result models, warnings, and field errors. |
 | `src/georesistivity/units.py` | Explicit conversion of supported units to SI. |
@@ -469,11 +503,12 @@ python -m mypy
 python -m pip_audit --skip-editable
 ```
 
-The current suite contains **421 automated tests** with branch coverage enforced at 95%,
+The current suite contains **503 automated tests** with branch coverage enforced at 95%,
 covering:
 
 - scientific calculation and sign policy;
 - sounding points, repeated readings, exclusions, and the digital field sheet;
+- project files, migrations, autosave, recovery, and templates;
 - geometric factors, including the field-sheet K table and every array against the general
   formula;
 - unit conversions;
@@ -518,7 +553,6 @@ GeoResistivity deliberately keeps its scientific scope narrow. The current versi
 - perform automatic geological interpretation;
 - perform 1D, 2D, or 3D subsurface modeling;
 - store measurements in a database;
-- persist measurements between Streamlit sessions;
 - import CSV files;
 - replace acquisition or interpretation software.
 
@@ -532,8 +566,11 @@ remain available in the session table and CSV export without spacing-based visua
 ## Data & Privacy
 
 The bundled sample measurements are synthetic and provided for demonstration and testing
-purposes. The application does not send usage statistics: `.streamlit/config.toml` disables
-Streamlit's usage-statistics collection.
+purposes. Survey data stays on the computer that runs the interface: autosave copies and
+templates are local files under `~/GeoResistivity`, and project files are saved where the
+browser downloads them. In LAN mode, other devices on the network can open the interface and
+see its data. The application does not send usage statistics: `.streamlit/config.toml` and
+`georesistivity app` disable Streamlit's usage-statistics collection.
 
 ## License
 

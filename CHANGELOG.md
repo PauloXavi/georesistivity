@@ -36,6 +36,14 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
 - `plotting.create_sounding_figure` and `io.sounding_points_to_csv` /
   `io.sounding_readings_to_csv`.
 - `MeasurementWarning.STACK_HIGH_VARIATION` and `STACK_MIXED_SIGNS`.
+- Project files (`*.geores.json`, schema version 1, `georesistivity.project`): survey details,
+  the field sheet as typed, its settings, and the single measurements, validated on load with
+  the JSON path of each problem, and migrated from older versions.
+- **Survey details** form, **Open project** and **Save project**, per-session **autosave**
+  under `~/GeoResistivity/autosave`, and **Restore** of earlier sessions (U-03).
+- Field-sheet **templates** with AB/2, MN, and marker colours (`georesistivity.storage`).
+- `georesistivity app --no-autosave`, `GEORESISTIVITY_HOME`, and `GEORESISTIVITY_AUTOSAVE`.
+- Field-sheet rows with only DeltaV or only I are reported as incomplete instead of invalid.
 
 ### Changed
 

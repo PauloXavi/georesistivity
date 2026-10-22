@@ -435,6 +435,14 @@ em `field_sheet.py` (em vez de `services.py`), e o modelo de sondagem em `survey
 Observação: o `AppTest` do Streamlit não digita em `st.data_editor`; a lógica da folha é
 testada sem interface e a digitação foi conferida no navegador.
 
+**Andamento:** M4 concluído em 2026-10-22: arquivo de projeto `.geores.json` (schema v1)
+com a folha **exatamente como digitada** (inclusive linhas em branco ou incompletas, para que
+o autosave nunca perca trabalho em andamento), metadados do cabeçalho da folha, abrir e salvar,
+autosave atômico com um arquivo por sessão, recuperação após recarregar e modelos de folha
+com as cores de marcação. Diferença em relação à seção 8: as células numéricas da folha são
+gravadas como texto digitado (e não como valor + unidade por leitura), e o horário de cada
+leitura ainda não é registrado; fica para a P2, junto com o histórico de alterações.
+
 **Ponto de parada:** ao final do M6 eu paro, rodo o app e mostro capturas, conforme o plano.
 Também posso parar ao fim de cada marco, se você preferir revisar aos poucos.
 
