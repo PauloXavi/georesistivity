@@ -1,10 +1,17 @@
 """Tests for locale-tolerant and unambiguous numeric parsing."""
 
 import math
+import re
 
 import pytest
 
-from georesistivity.validation import AmbiguousNumberError, ensure_finite_number, parse_number
+from georesistivity.validation import (
+    AmbiguousNumberError,
+    ensure_finite_number,
+    is_ambiguous_number_text,
+    parse_number,
+    parse_number_with_decimal,
+)
 
 
 @pytest.mark.parametrize(
@@ -127,3 +134,51 @@ def test_overflowing_or_non_finite_text_is_rejected(raw_value: str) -> None:
 def test_ensure_finite_number_rejects_non_real_values(value: object) -> None:
     with pytest.raises(TypeError, match="must be a real number"):
         ensure_finite_number(value, "field")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("text", "separator", "expected"),
+    [
+        ("1,000", ",", 1.0),
+        ("1.000", ".", 1.0),
+        ("1,5e-3", ",", 0.0015),
+        ("-2", ",", -2.0),
+        (" 3.25 ", ".", 3.25),
+    ],
+)
+def test_parse_with_a_declared_decimal_separator(
+    text: str, separator: str, expected: float
+) -> None:
+    assert parse_number_with_decimal(text, separator) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("text", "separator", "message"),
+    [
+        ("1.000", ",", "uses '.', but the decimal separator is ','"),
+        ("1,5", ".", "uses ',', but the decimal separator is '.'"),
+        ("", ".", "cannot be empty"),
+        ("abc", ".", "invalid numeric value"),
+        ("nan", ".", "must be finite"),
+        ("1e999", ".", "must be finite"),
+    ],
+)
+def test_declared_separator_rejects_other_notations(
+    text: str, separator: str, message: str
+) -> None:
+    with pytest.raises(ValueError, match=re.escape(message)):
+        parse_number_with_decimal(text, separator)
+
+
+def test_declared_separator_must_be_supported() -> None:
+    with pytest.raises(ValueError, match="unsupported decimal separator"):
+        parse_number_with_decimal("1", ";")
+    with pytest.raises(TypeError, match="must be a string"):
+        parse_number_with_decimal(1.0, ".")  # type: ignore[arg-type]
+
+
+def test_ambiguity_check_matches_parse_number() -> None:
+    assert is_ambiguous_number_text("1,234")
+    assert is_ambiguous_number_text(" 3.134 ")
+    assert not is_ambiguous_number_text("0,125")
+    assert not is_ambiguous_number_text("1,2340")

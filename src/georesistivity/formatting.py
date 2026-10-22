@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from georesistivity.validation import ensure_finite_number
+from georesistivity.validation import ensure_finite_number, is_ambiguous_number_text
 
 NumberFormat = Literal["pt-BR", "en"]
 """``pt-BR``: ``1.234,5`` (decimal comma). ``en``: ``1,234.5`` (decimal point)."""
@@ -66,3 +66,17 @@ def format_full_precision(value: float, *, number_format: NumberFormat = "pt-BR"
     """Format a value with up to 12 significant digits and no digit grouping."""
     number = ensure_finite_number(value, "value")
     return _localize(f"{number:.12g}", number_format)
+
+
+def format_for_input(value: float, *, number_format: NumberFormat = "pt-BR") -> str:
+    """Format a value as text that :func:`~georesistivity.validation.parse_number` reads back
+    exactly and never rejects as ambiguous.
+
+    Up to 12 significant digits, no grouping; a trailing zero is added when the text would look
+    like a thousands-grouped integer (``1,234`` becomes ``1,2340``).
+    """
+    text = format_full_precision(value, number_format=number_format)
+    if not is_ambiguous_number_text(text):
+        return text
+    mantissa, _, exponent = text.partition("e")
+    return f"{mantissa}0" + (f"e{exponent}" if exponent else "")

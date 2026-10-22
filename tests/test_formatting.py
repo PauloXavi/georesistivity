@@ -3,8 +3,11 @@
 import math
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
-from georesistivity.formatting import format_full_precision, format_significant
+from georesistivity.formatting import format_for_input, format_full_precision, format_significant
+from georesistivity.validation import parse_number
 
 
 @pytest.mark.parametrize(
@@ -80,3 +83,28 @@ def test_grouping_can_be_disabled_for_tables() -> None:
     assert format_significant(2035.4, number_format="en", significant_digits=5, grouping=False) == (
         "2035.4"
     )
+
+
+@pytest.mark.parametrize(
+    ("value", "pt_br", "en"),
+    [
+        (1.234, "1,2340", "1.2340"),
+        (999.999, "999,9990", "999.9990"),
+        (0.125, "0,125", "0.125"),
+        (1234.5, "1234,5", "1234.5"),
+        (80.0, "80", "80"),
+        (1.234e-20, "1,2340e-20", "1.2340e-20"),  # the exponent does not remove the doubt
+    ],
+)
+def test_input_text_is_never_ambiguous(value: float, pt_br: str, en: str) -> None:
+    assert format_for_input(value, number_format="pt-BR") == pt_br
+    assert format_for_input(value, number_format="en") == en
+    assert parse_number(pt_br) == pytest.approx(value)
+    assert parse_number(en) == pytest.approx(value)
+
+
+@given(st.floats(allow_nan=False, allow_infinity=False, min_value=-1e15, max_value=1e15))
+def test_input_text_round_trips_through_parse_number(value: float) -> None:
+    for number_format in ("pt-BR", "en"):
+        text = format_for_input(value, number_format=number_format)  # type: ignore[arg-type]
+        assert parse_number(text) == pytest.approx(value, rel=1e-11, abs=1e-300)

@@ -32,6 +32,40 @@ def ensure_finite_number(value: float, field_name: str) -> float:
     return converted
 
 
+def is_ambiguous_number_text(text: str) -> bool:
+    """Whether ``text`` reads as either a thousands-grouped integer or a decimal (``1,000``)."""
+    return _AMBIGUOUS_PATTERN.fullmatch(text.strip()) is not None
+
+
+def parse_number_with_decimal(value: str, decimal_separator: str) -> float:
+    """Parse ``value`` written with a known decimal separator (``.`` or ``,``).
+
+    Used when a whole source, such as a CSV file, declares its convention: ``1,000`` is then
+    1.0 with a decimal comma, and the other separator is rejected instead of guessed.
+    """
+    if decimal_separator not in (".", ","):
+        raise ValueError(f"unsupported decimal separator: {decimal_separator!r}")
+    if not isinstance(value, str):
+        raise TypeError("value must be a string")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("value cannot be empty")
+    other = "," if decimal_separator == "." else "."
+    if other in normalized:
+        raise ValueError(
+            f"{value.strip()!r} uses {other!r}, but the decimal separator is "
+            f"{decimal_separator!r}; thousands separators are not accepted"
+        )
+    if _NUMBER_PATTERN.fullmatch(normalized) is None:
+        if _is_non_finite_token(normalized):
+            raise ValueError("value must be finite")
+        raise ValueError(f"invalid numeric value: {value!r}")
+    parsed = float(normalized.replace(",", "."))
+    if not math.isfinite(parsed):
+        raise ValueError("value must be finite")
+    return parsed
+
+
 def parse_number(value: str) -> float:
     """Parse a decimal number written with either a comma or a period separator.
 
