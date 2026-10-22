@@ -50,6 +50,9 @@ dev = [
     "ruff>=0.9",
 ]
 
+[project.scripts]
+georesistivity = "georesistivity.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/PauloXavi/georesistivity"
 Issues = "https://github.com/PauloXavi/georesistivity/issues"

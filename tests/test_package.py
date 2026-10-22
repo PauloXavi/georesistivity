@@ -28,10 +28,11 @@ def test_public_names_are_listed_by_dir() -> None:
     assert set(georesistivity.__all__) <= set(dir(georesistivity))
 
 
-def test_core_import_does_not_load_pandas_or_matplotlib() -> None:
+def test_core_cli_and_services_do_not_load_heavy_dependencies() -> None:
     code = (
         "import sys, georesistivity; "
         "from georesistivity import calculate_measurement, parse_number; "
+        "import georesistivity.app, georesistivity.cli, georesistivity.services; "
         "print(sorted(m for m in ('pandas', 'matplotlib', 'streamlit') if m in sys.modules))"
     )
     source_dir = Path(__file__).resolve().parents[1] / "src"
