@@ -19,10 +19,11 @@ from georesistivity.units import (
     convert_length_to_meters,
     convert_voltage_to_volts,
 )
-from georesistivity.validation import parse_number
+from georesistivity.validation import AmbiguousNumberError, parse_number
 
 __all__ = [
     "TABLE_COLUMNS",
+    "AmbiguousNumberError",
     "Measurement",
     "MeasurementResult",
     "PlotPoint",

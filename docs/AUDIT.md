@@ -523,9 +523,11 @@ Reprodução de V-01 na interface:
 
 ```python
 from streamlit.testing.v1 import AppTest
-at = AppTest.from_file("app/app.py"); at.run()
+
+at = AppTest.from_file("app/app.py")
+at.run()
 for i, v in enumerate(["125", "35", "1,000", "", ""]):
     at.text_input[i].set_value(v)
 at.button[0].click().run()
-print(at.metric[0].value)   # '3.57 ohm·m' — o valor pretendido era 3,571.43
+print(at.metric[0].value)  # '3.57 ohm·m' — o valor pretendido era 3,571.43
 ```

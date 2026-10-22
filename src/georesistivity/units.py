@@ -4,18 +4,21 @@ from collections.abc import Mapping
 
 from georesistivity.validation import ensure_finite_number
 
+# Micro is accepted as ASCII "u", MICRO SIGN (U+00B5), and GREEK SMALL LETTER MU (U+03BC).
 _VOLTAGE_FACTORS: dict[str, float] = {
     "V": 1.0,
     "mV": 1e-3,
     "uV": 1e-6,
-    "µV": 1e-6,
+    "\u00b5V": 1e-6,
+    "\u03bcV": 1e-6,
 }
 
 _CURRENT_FACTORS: dict[str, float] = {
     "A": 1.0,
     "mA": 1e-3,
     "uA": 1e-6,
-    "µA": 1e-6,
+    "\u00b5A": 1e-6,
+    "\u03bcA": 1e-6,
 }
 
 _LENGTH_FACTORS: dict[str, float] = {
@@ -33,8 +36,10 @@ def _convert_to_si(
     quantity_name: str,
 ) -> float:
     numeric_value = ensure_finite_number(value, quantity_name)
+    if not isinstance(unit, str):
+        raise TypeError(f"{quantity_name} unit must be a string")
     try:
-        factor = factors[unit]
+        factor = factors[unit.strip()]
     except KeyError as exc:
         supported = ", ".join(factors)
         raise ValueError(
