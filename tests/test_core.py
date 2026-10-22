@@ -5,7 +5,7 @@ import math
 import pytest
 
 from georesistivity.core import apparent_resistivity, calculate_measurement
-from georesistivity.models import Measurement, MeasurementWarning
+from georesistivity.models import Measurement, MeasurementFieldError, MeasurementWarning
 
 
 def test_apparent_resistivity_identity() -> None:
@@ -90,8 +90,10 @@ def make_measurement(
 
 @pytest.mark.parametrize("spacing", [0.0, -3.0])
 def test_non_positive_spacing_is_rejected(spacing: float) -> None:
-    with pytest.raises(ValueError, match="spacing_ab2 must be positive"):
+    with pytest.raises(MeasurementFieldError, match="spacing_ab2: must be positive") as error:
         calculate_measurement(make_measurement(spacing=spacing, spacing_unit="m"))
+
+    assert error.value.field == "spacing_ab2"
 
 
 def test_negative_apparent_resistivity_is_kept_and_flagged() -> None:
@@ -111,3 +113,57 @@ def test_positive_apparent_resistivity_has_no_warnings() -> None:
 def test_overflowing_result_is_rejected() -> None:
     with pytest.raises(ValueError, match="result must be finite"):
         apparent_resistivity(1e308, 1e-308, 1e308)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "field", "reason"),
+    [
+        ({"current_original": 0.0}, "current", "cannot be zero"),
+        ({"voltage_unit": "kV"}, "delta_v", "unsupported voltage unit"),
+        ({"current_unit": "kA"}, "current", "unsupported current unit"),
+        ({"geometric_factor_original": 0.0}, "geometric_factor", "must be positive"),
+        ({"geometric_factor_original": -5.0}, "geometric_factor", "must be positive"),
+        (
+            {"geometric_factor_original": 1e306, "geometric_factor_unit": "km"},
+            "geometric_factor",
+            "too large",
+        ),
+        ({"spacing_ab2_original": 1e306, "spacing_unit": "km"}, "spacing_ab2", "too large"),
+    ],
+)
+def test_calculation_errors_name_the_offending_field(
+    overrides: dict[str, object],
+    field: str,
+    reason: str,
+) -> None:
+    arguments: dict[str, object] = {
+        "delta_v_original": 100.0,
+        "voltage_unit": "mV",
+        "current_original": 20.0,
+        "current_unit": "mA",
+        "geometric_factor_original": 5.0,
+        "geometric_factor_unit": "m",
+        **overrides,
+    }
+
+    with pytest.raises(MeasurementFieldError) as error:
+        calculate_measurement(Measurement(**arguments))  # type: ignore[arg-type]
+
+    assert error.value.field == field
+    assert reason in error.value.reason
+
+
+def test_overflowing_measurement_result_is_not_attributed_to_one_field() -> None:
+    measurement = Measurement(
+        delta_v_original=1e306,
+        voltage_unit="V",
+        current_original=1e-306,
+        current_unit="A",
+        geometric_factor_original=5.0,
+        geometric_factor_unit="m",
+    )
+
+    with pytest.raises(ValueError, match="result must be finite") as error:
+        calculate_measurement(measurement)
+
+    assert not isinstance(error.value, MeasurementFieldError)

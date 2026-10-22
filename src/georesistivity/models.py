@@ -2,6 +2,18 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Literal
+
+MeasurementField = Literal["delta_v", "current", "geometric_factor", "spacing_ab2"]
+
+
+class MeasurementFieldError(ValueError):
+    """A measurement value rejected because of one specific input field."""
+
+    def __init__(self, field: MeasurementField, reason: str) -> None:
+        super().__init__(f"{field}: {reason}")
+        self.field: MeasurementField = field
+        self.reason = reason
 
 
 class MeasurementWarning(StrEnum):

@@ -1,8 +1,15 @@
 """Scientific calculations for apparent electrical resistivity."""
 
 import math
+from collections.abc import Callable
 
-from georesistivity.models import Measurement, MeasurementResult, MeasurementWarning
+from georesistivity.models import (
+    Measurement,
+    MeasurementField,
+    MeasurementFieldError,
+    MeasurementResult,
+    MeasurementWarning,
+)
 from georesistivity.units import (
     convert_current_to_amperes,
     convert_length_to_meters,
@@ -45,32 +52,59 @@ def apparent_resistivity(
     return result
 
 
+def _convert_field(
+    field: MeasurementField,
+    converter: Callable[[float, str], float],
+    value: float,
+    unit: str,
+) -> float:
+    try:
+        return converter(value, unit)
+    except ValueError as exc:
+        raise MeasurementFieldError(field, str(exc)) from exc
+
+
 def calculate_measurement(measurement: Measurement) -> MeasurementResult:
     """Convert and calculate one independent measurement without aggregation.
 
-    AB/2, when supplied, must be positive. A negative apparent resistivity is kept and
-    flagged with :attr:`MeasurementWarning.NEGATIVE_APPARENT_RESISTIVITY`.
+    Input problems raise :class:`MeasurementFieldError` naming the offending field. AB/2,
+    when supplied, must be positive. A negative apparent resistivity is kept and flagged
+    with :attr:`MeasurementWarning.NEGATIVE_APPARENT_RESISTIVITY`.
     """
-    delta_v_v = convert_voltage_to_volts(
+    delta_v_v = _convert_field(
+        "delta_v",
+        convert_voltage_to_volts,
         measurement.delta_v_original,
         measurement.voltage_unit,
     )
-    current_a = convert_current_to_amperes(
+    current_a = _convert_field(
+        "current",
+        convert_current_to_amperes,
         measurement.current_original,
         measurement.current_unit,
     )
-    geometric_factor_m = convert_length_to_meters(
+    if current_a == 0.0:
+        raise MeasurementFieldError("current", "cannot be zero")
+
+    geometric_factor_m = _convert_field(
+        "geometric_factor",
+        convert_length_to_meters,
         measurement.geometric_factor_original,
         measurement.geometric_factor_unit,
     )
+    if geometric_factor_m <= 0.0:
+        raise MeasurementFieldError("geometric_factor", "must be positive")
+
     spacing_ab2_m = None
     if measurement.spacing_ab2_original is not None and measurement.spacing_unit is not None:
-        spacing_ab2_m = convert_length_to_meters(
+        spacing_ab2_m = _convert_field(
+            "spacing_ab2",
+            convert_length_to_meters,
             measurement.spacing_ab2_original,
             measurement.spacing_unit,
         )
         if spacing_ab2_m <= 0.0:
-            raise ValueError("spacing_ab2 must be positive")
+            raise MeasurementFieldError("spacing_ab2", "must be positive")
 
     rho_a = apparent_resistivity(delta_v_v, current_a, geometric_factor_m)
     warnings = (MeasurementWarning.NEGATIVE_APPARENT_RESISTIVITY,) if rho_a < 0.0 else ()

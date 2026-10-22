@@ -7,7 +7,13 @@ from georesistivity.io import (
     measurement_results_to_csv,
     measurement_results_to_dataframe,
 )
-from georesistivity.models import Measurement, MeasurementResult
+from georesistivity.models import (
+    Measurement,
+    MeasurementField,
+    MeasurementFieldError,
+    MeasurementResult,
+    MeasurementWarning,
+)
 from georesistivity.plotting import (
     PlotPoint,
     create_resistivity_figure,
@@ -25,7 +31,10 @@ __all__ = [
     "TABLE_COLUMNS",
     "AmbiguousNumberError",
     "Measurement",
+    "MeasurementField",
+    "MeasurementFieldError",
     "MeasurementResult",
+    "MeasurementWarning",
     "PlotPoint",
     "apparent_resistivity",
     "calculate_measurement",
