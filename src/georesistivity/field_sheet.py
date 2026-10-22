@@ -1,0 +1,182 @@
+"""Digital Schlumberger field sheet: rows typed by the user become sounding points.
+
+Each row is one reading at one (AB/2, MN) position, as on the paper sheet: rows left without
+DeltaV and I are positions that were not read. Two rows with the same AB/2 and different MN
+are an overlap between MN segments; two rows with the same AB/2 and MN are repeated readings
+of one position. Lengths are in meters. This module does not import Streamlit or pandas.
+"""
+
+from collections.abc import Sequence
+from dataclasses import dataclass, field
+from typing import Literal
+
+from georesistivity.formatting import NumberFormat, format_full_precision
+from georesistivity.geometry import GeometryError, field_sheet_cells, schlumberger_geometric_factor
+from georesistivity.models import MeasurementFieldError
+from georesistivity.stacking import DEFAULT_CV_THRESHOLD
+from georesistivity.survey import (
+    PointResult,
+    Reading,
+    SoundingPoint,
+    evaluate_point,
+    evaluate_reading,
+    sort_points,
+)
+from georesistivity.validation import parse_number
+
+SheetColumn = Literal["ab2", "mn", "delta_v", "current", "reason"]
+RowState = Literal["blank", "valid", "excluded", "invalid"]
+
+
+@dataclass(frozen=True, slots=True)
+class SheetRow:
+    """One row of the field sheet, exactly as typed."""
+
+    marker: str = ""
+    ab2: str = ""
+    mn: str = ""
+    delta_v: str = ""
+    current: str = ""
+    excluded: bool = False
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RowIssue:
+    """One problem in one column of a row."""
+
+    column: SheetColumn
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class RowStatus:
+    """Whether a row was blank, used, excluded, or rejected, and why."""
+
+    state: RowState
+    issues: tuple[RowIssue, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SheetOutcome:
+    """Status of every row and the resulting sounding points, by AB/2 and MN."""
+
+    rows: tuple[RowStatus, ...]
+    points: tuple[PointResult, ...]
+    invalid_rows: tuple[tuple[int, RowStatus], ...] = field(init=False)
+    """1-based row numbers and statuses of the rejected rows."""
+
+    def __post_init__(self) -> None:
+        invalid = tuple(
+            (number, status)
+            for number, status in enumerate(self.rows, start=1)
+            if status.state == "invalid"
+        )
+        object.__setattr__(self, "invalid_rows", invalid)
+
+
+def template_rows(number_format: NumberFormat = "pt-BR") -> list[SheetRow]:
+    """Return the empty rows of the standard Schlumberger field sheet (45 positions)."""
+    return [
+        SheetRow(
+            ab2=format_full_precision(ab2, number_format=number_format),
+            mn=format_full_precision(mn, number_format=number_format),
+        )
+        for ab2, mn in field_sheet_cells()
+    ]
+
+
+def _parse(column: SheetColumn, text: str, issues: list[RowIssue]) -> float | None:
+    try:
+        return parse_number(text)
+    except ValueError as exc:
+        issues.append(RowIssue(column, str(exc)))
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class _ParsedRow:
+    ab2_m: float
+    mn_m: float
+    marker: str | None
+    reading: Reading
+
+
+def _evaluate_row(
+    row: SheetRow,
+    voltage_unit: str,
+    current_unit: str,
+) -> tuple[RowStatus, _ParsedRow | None]:
+    if not row.delta_v.strip() and not row.current.strip():
+        return RowStatus("blank"), None
+
+    issues: list[RowIssue] = []
+    ab2 = _parse("ab2", row.ab2, issues)
+    mn = _parse("mn", row.mn, issues)
+    delta_v = _parse("delta_v", row.delta_v, issues)
+    current = _parse("current", row.current, issues)
+    reason = row.reason.strip()
+    if row.excluded and not reason:
+        issues.append(RowIssue("reason", "is required to exclude a reading"))
+
+    if ab2 is not None and mn is not None:
+        try:
+            schlumberger_geometric_factor(ab2, mn)
+        except GeometryError as exc:
+            issues.append(RowIssue("ab2" if exc.parameter == "ab2" else "mn", exc.reason))
+        except ValueError as exc:
+            issues.append(RowIssue("ab2", str(exc)))
+
+    if issues or ab2 is None or mn is None or delta_v is None or current is None:
+        return RowStatus("invalid", tuple(issues)), None
+
+    reading = Reading(
+        delta_v_original=delta_v,
+        voltage_unit=voltage_unit,
+        current_original=current,
+        current_unit=current_unit,
+        excluded=row.excluded,
+        exclusion_reason=reason or None,
+    )
+    try:
+        evaluate_reading(reading)
+    except MeasurementFieldError as exc:
+        column: SheetColumn = "delta_v" if exc.field == "delta_v" else "current"
+        return RowStatus("invalid", (RowIssue(column, exc.reason),)), None
+
+    state: RowState = "excluded" if row.excluded else "valid"
+    parsed = _ParsedRow(ab2, mn, row.marker.strip() or None, reading)
+    return RowStatus(state), parsed
+
+
+def evaluate_sheet(
+    rows: Sequence[SheetRow],
+    *,
+    voltage_unit: str,
+    current_unit: str,
+    cv_threshold: float = DEFAULT_CV_THRESHOLD,
+) -> SheetOutcome:
+    """Validate every row and combine the readings of each (AB/2, MN) position.
+
+    Blank rows are ignored and invalid rows are reported without affecting the others.
+    Readings keep their row order within a position.
+    """
+    statuses: list[RowStatus] = []
+    groups: dict[tuple[float, float], list[_ParsedRow]] = {}
+    for row in rows:
+        status, parsed = _evaluate_row(row, voltage_unit, current_unit)
+        statuses.append(status)
+        if parsed is not None:
+            groups.setdefault((parsed.ab2_m, parsed.mn_m), []).append(parsed)
+
+    points = []
+    for (ab2_m, mn_m), parsed_rows in groups.items():
+        marker = next((parsed.marker for parsed in parsed_rows if parsed.marker), None)
+        point = SoundingPoint(
+            ab2_m=ab2_m,
+            mn_m=mn_m,
+            readings=tuple(parsed.reading for parsed in parsed_rows),
+            marker=marker,
+        )
+        points.append(evaluate_point(point, cv_threshold=cv_threshold))
+    return SheetOutcome(tuple(statuses), sort_points(points))
