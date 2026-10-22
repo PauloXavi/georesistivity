@@ -358,3 +358,85 @@ def saved_at(text: str) -> dt.datetime | None:
         return dt.datetime.fromisoformat(data["saved_at"])
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------- sheet templates
+
+TEMPLATE_SCHEMA = "georesistivity.sheet-template"
+TEMPLATE_SCHEMA_VERSION = 1
+_TEMPLATE_ROW_KEYS = {"marker", "ab2", "mn"}
+
+
+@dataclass(frozen=True, slots=True)
+class SheetTemplate:
+    """A reusable field-sheet layout: AB/2, MN, and marker colour of each row, no readings."""
+
+    name: str
+    rows: tuple[SheetRow, ...]
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("a template needs a name")
+        if not self.rows:
+            raise ValueError("a template needs at least one row")
+        if any(row.delta_v or row.current or row.excluded or row.reason for row in self.rows):
+            raise ValueError("a template keeps only marker, AB/2, and MN")
+
+    @classmethod
+    def from_rows(cls, name: str, rows: tuple[SheetRow, ...] | list[SheetRow]) -> "SheetTemplate":
+        """Keep the layout of ``rows``: one row per (AB/2, MN), readings removed."""
+        seen: set[tuple[str, str]] = set()
+        layout = []
+        for row in rows:
+            key = (row.ab2.strip(), row.mn.strip())
+            if not any(key) or key in seen:
+                continue
+            seen.add(key)
+            layout.append(SheetRow(marker=row.marker.strip(), ab2=key[0], mn=key[1]))
+        return cls(name=name.strip(), rows=tuple(layout))
+
+    def sheet_rows(self) -> tuple[SheetRow, ...]:
+        """Rows of a new, empty sheet with this layout."""
+        return self.rows
+
+
+def template_to_json(template: SheetTemplate) -> str:
+    """Serialize a sheet template as JSON text."""
+    data = {
+        "schema": TEMPLATE_SCHEMA,
+        "schema_version": TEMPLATE_SCHEMA_VERSION,
+        "name": template.name,
+        "rows": [{"marker": row.marker, "ab2": row.ab2, "mn": row.mn} for row in template.rows],
+    }
+    return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+
+
+def template_from_json(text: str) -> SheetTemplate:
+    """Read and validate a sheet template."""
+    try:
+        data = _expect_object(json.loads(text), "")
+    except json.JSONDecodeError as exc:
+        raise ProjectFormatError(
+            "", f"not valid JSON (line {exc.lineno}, column {exc.colno})"
+        ) from exc
+    if data.get("schema") != TEMPLATE_SCHEMA:
+        raise ProjectFormatError(
+            "schema", f"this is not a sheet template (expected {TEMPLATE_SCHEMA!r})"
+        )
+    if data.get("schema_version") != TEMPLATE_SCHEMA_VERSION:
+        raise ProjectFormatError("schema_version", f"must be {TEMPLATE_SCHEMA_VERSION}")
+    _check_keys(data, "", {"schema", "schema_version", "name", "rows"}, {"name", "rows"})
+    name = _text(data["name"], "name")
+    rows = []
+    for index, value in enumerate(_typed(data["rows"], "rows", list, "a list")):
+        path = f"rows[{index}]"
+        row = _expect_object(value, path)
+        _check_keys(row, path, _TEMPLATE_ROW_KEYS, {"ab2", "mn"})
+        rows.append(
+            SheetRow(
+                marker=_text(row.get("marker", ""), f"{path}.marker"),
+                ab2=_text(row["ab2"], f"{path}.ab2"),
+                mn=_text(row["mn"], f"{path}.mn"),
+            )
+        )
+    return _build("", lambda: SheetTemplate(name=name, rows=tuple(rows)))
