@@ -32,13 +32,14 @@ def format_significant(
     *,
     number_format: NumberFormat = "pt-BR",
     significant_digits: int = 4,
+    grouping: bool = True,
 ) -> str:
     """Format a value with a fixed number of significant digits.
 
     Values between 0.001 and 999,999,999 use positional notation with digit grouping
     (``2.232`` in pt-BR, ``2,232`` in en for 2232.14). Smaller or larger magnitudes use
     scientific notation (``2,947 x 10^-4`` rendered with a multiplication sign and
-    superscript exponent).
+    superscript exponent). ``grouping=False`` omits the thousands separator, for tables.
     """
     number = ensure_finite_number(value, "value")
     if significant_digits < 1:
@@ -53,7 +54,8 @@ def format_significant(
     if _MIN_FIXED_EXPONENT <= exponent <= _MAX_FIXED_EXPONENT:
         decimals = significant_digits - 1 - exponent
         rounded = round(number, decimals)
-        text = format(rounded, f",.{max(decimals, 0)}f")
+        separator = "," if grouping else ""
+        text = format(rounded, f"{separator}.{max(decimals, 0)}f")
         return _localize(text, number_format)
 
     superscript = str(exponent).translate(_SUPERSCRIPTS)

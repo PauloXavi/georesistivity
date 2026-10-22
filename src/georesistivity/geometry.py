@@ -13,7 +13,7 @@ References:
 """
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
 from georesistivity.validation import ensure_finite_number
@@ -38,6 +38,16 @@ here with the exact formula, which is valid for any MN/2 < AB/2, so the warning 
 unusually wide MN. The standard Schlumberger field sheet uses ratios down to 4.0
 (AB/2 = 1.0 m with MN = 0.5 m).
 """
+
+
+FIELD_SHEET_AB2_M: tuple[float, ...] = (
+    1.0, 1.3, 1.8, 2.4, 3.2, 4.2, 5.5, 7.5, 10.0, 13.0, 18.0,
+    24.0, 32.0, 42.0, 55.0, 75.0, 100.0, 130.0, 180.0, 240.0, 320.0,
+)  # fmt: skip
+"""AB/2 schedule [m] of the standard Schlumberger field sheet."""
+
+FIELD_SHEET_MN_M: tuple[float, ...] = (0.5, 2.0, 5.0, 20.0, 50.0, 100.0)
+"""MN spacings [m] (full M-N distance) of the standard Schlumberger field sheet."""
 
 
 class GeometryError(ValueError):
@@ -154,3 +164,22 @@ def geometric_factor(array: ArrayType, parameters: Mapping[GeometryParameter, fl
     return general_geometric_factor(
         parameters["am"], parameters["bm"], parameters["an"], parameters["bn"]
     )
+
+
+def schlumberger_k_table(
+    ab2_values: Sequence[float],
+    mn_values: Sequence[float],
+) -> list[list[float | None]]:
+    """Return K [m] for every AB/2 (rows) and MN (columns); ``None`` where MN/2 >= AB/2."""
+    table: list[list[float | None]] = []
+    for ab2 in ab2_values:
+        row: list[float | None] = []
+        for mn in mn_values:
+            try:
+                row.append(schlumberger_geometric_factor(ab2, mn))
+            except GeometryError as exc:
+                if exc.parameter != "mn" or "smaller than AB/2" not in exc.reason:
+                    raise
+                row.append(None)
+        table.append(row)
+    return table

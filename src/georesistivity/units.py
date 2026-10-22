@@ -1,6 +1,7 @@
 """Explicit conversions from supported field units to SI units."""
 
 import math
+import re
 from collections.abc import Mapping
 from decimal import Decimal
 
@@ -33,6 +34,21 @@ _LENGTH_EXPONENTS: dict[str, int] = {
     "mm": -3,
     "km": 3,
 }
+
+
+_QUANTITY_PATTERN = re.compile(r"(?P<number>.+?)\s*(?P<unit>[A-Za-z\u00b5\u03bc]+)")
+
+
+def split_quantity(text: str) -> tuple[str, str]:
+    """Split ``"125mV"`` or ``"0,125 V"`` into its number text and unit, unvalidated.
+
+    The number is checked later with :func:`~georesistivity.validation.parse_number` and the
+    unit by the conversion functions.
+    """
+    match = _QUANTITY_PATTERN.fullmatch(text.strip())
+    if match is None:
+        raise ValueError(f"missing unit in {text!r}; write it like 20m or 125mV")
+    return match["number"], match["unit"]
 
 
 def _convert_to_si(

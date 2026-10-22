@@ -71,3 +71,12 @@ def test_invalid_arguments_are_rejected() -> None:
 def test_full_precision_has_no_grouping(value: float, pt_br: str, en: str) -> None:
     assert format_full_precision(value, number_format="pt-BR") == pt_br
     assert format_full_precision(value, number_format="en") == en
+
+
+def test_grouping_can_be_disabled_for_tables() -> None:
+    assert format_significant(
+        36187.0, number_format="pt-BR", significant_digits=5, grouping=False
+    ) == ("36187")
+    assert format_significant(2035.4, number_format="en", significant_digits=5, grouping=False) == (
+        "2035.4"
+    )

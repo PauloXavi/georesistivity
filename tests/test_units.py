@@ -6,6 +6,7 @@ from georesistivity.units import (
     convert_current_to_amperes,
     convert_length_to_meters,
     convert_voltage_to_volts,
+    split_quantity,
 )
 
 
@@ -105,3 +106,24 @@ def test_underflow_to_zero_after_conversion_is_rejected() -> None:
 
 def test_zero_stays_zero_after_conversion() -> None:
     assert convert_voltage_to_volts(0.0, "mV") == 0.0
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("125mV", ("125", "mV")),
+        (" 0,125 V ", ("0,125", "V")),
+        ("1e3m", ("1e3", "m")),
+        ("-3,5km", ("-3,5", "km")),
+        ("2µA", ("2", "µA")),
+        ("2μA", ("2", "μA")),
+    ],
+)
+def test_split_quantity(text: str, expected: tuple[str, str]) -> None:
+    assert split_quantity(text) == expected
+
+
+@pytest.mark.parametrize("text", ["125", "", "  "])
+def test_split_quantity_requires_a_unit(text: str) -> None:
+    with pytest.raises(ValueError, match="missing unit"):
+        split_quantity(text)

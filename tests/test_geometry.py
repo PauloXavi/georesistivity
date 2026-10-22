@@ -10,6 +10,8 @@ from hypothesis import strategies as st
 
 from georesistivity.geometry import (
     ARRAY_PARAMETERS,
+    FIELD_SHEET_AB2_M,
+    FIELD_SHEET_MN_M,
     SCHLUMBERGER_MIN_RATIO,
     GeometryError,
     dipole_dipole_geometric_factor,
@@ -17,6 +19,7 @@ from georesistivity.geometry import (
     geometric_factor,
     pole_dipole_geometric_factor,
     schlumberger_geometric_factor,
+    schlumberger_k_table,
     schlumberger_spacing_ratio,
     wenner_geometric_factor,
 )
@@ -221,3 +224,22 @@ def test_pole_dipole_equals_the_general_formula_with_remote_b(a: float, n: float
     general = general_geometric_factor(n * a, math.inf, (n + 1.0) * a, math.inf)
 
     assert pole_dipole_geometric_factor(a, n) == pytest.approx(general, rel=1e-12)
+
+
+def test_field_sheet_schedule_matches_the_k_table_rows_and_columns() -> None:
+    assert tuple(FIELD_SHEET_K_TABLE) == FIELD_SHEET_AB2_M
+    assert {mn for row in FIELD_SHEET_K_TABLE.values() for mn in row} == set(FIELD_SHEET_MN_M)
+
+
+def test_k_table_leaves_invalid_cells_empty() -> None:
+    table = schlumberger_k_table([1.0, 20.0], [0.5, 2.0, 50.0])
+
+    assert table[0][0] == pytest.approx(schlumberger_geometric_factor(1.0, 0.5))
+    assert table[0][1:] == [None, None]
+    assert table[1][2] is None
+    assert table[1][1] == pytest.approx(schlumberger_geometric_factor(20.0, 2.0))
+
+
+def test_k_table_still_rejects_invalid_spacings() -> None:
+    with pytest.raises(GeometryError, match="ab2: must be positive"):
+        schlumberger_k_table([0.0], [1.0])
