@@ -23,10 +23,13 @@ TABLE_COLUMNS = (
     "K source",
     "AB/2",
     "Spacing unit",
+    "MN",
+    "MN unit",
     "Delta V [V]",
     "I [A]",
     "K [m]",
     "AB/2 [m]",
+    "MN [m]",
     "rho_a [ohm.m]",
     "Warnings",
 )
@@ -37,6 +40,7 @@ _TEXT_COLUMNS = (
     "K unit",
     "K source",
     "Spacing unit",
+    "MN unit",
     "Warnings",
 )
 
@@ -64,10 +68,13 @@ def measurement_result_to_record(
         "K source": measurement.geometric_factor_source,
         "AB/2": measurement.spacing_ab2_original,
         "Spacing unit": measurement.spacing_unit,
+        "MN": measurement.mn_original,
+        "MN unit": measurement.mn_unit,
         "Delta V [V]": result.delta_v_v,
         "I [A]": result.current_a,
         "K [m]": result.geometric_factor_m,
         "AB/2 [m]": result.spacing_ab2_m,
+        "MN [m]": result.mn_m,
         "rho_a [ohm.m]": result.apparent_resistivity_ohm_m,
         "Warnings": "; ".join(result.warnings) or None,
     }

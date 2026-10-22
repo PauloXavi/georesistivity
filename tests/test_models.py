@@ -102,3 +102,38 @@ def test_geometric_factor_source_does_not_affect_calculation() -> None:
     unknown = calculate_measurement(Measurement(**base_arguments, geometric_factor_source=None))
 
     assert manual.apparent_resistivity_ohm_m == unknown.apparent_resistivity_ohm_m
+
+
+@pytest.mark.parametrize(("mn", "mn_unit"), [(1.0, None), (None, "m")])
+def test_mn_value_and_unit_must_be_provided_together(
+    mn: float | None,
+    mn_unit: str | None,
+) -> None:
+    with pytest.raises(ValueError, match="MN value and MN unit"):
+        Measurement(
+            delta_v_original=1.0,
+            voltage_unit="V",
+            current_original=1.0,
+            current_unit="A",
+            geometric_factor_original=1.0,
+            geometric_factor_unit="m",
+            mn_original=mn,
+            mn_unit=mn_unit,
+        )
+
+
+def test_mn_is_converted_and_does_not_affect_the_calculation() -> None:
+    base = {
+        "delta_v_original": 2.0,
+        "voltage_unit": "V",
+        "current_original": 1.0,
+        "current_unit": "A",
+        "geometric_factor_original": 5.0,
+        "geometric_factor_unit": "m",
+    }
+    without_mn = calculate_measurement(Measurement(**base))
+    with_mn = calculate_measurement(Measurement(**base, mn_original=50.0, mn_unit="cm"))
+
+    assert without_mn.mn_m is None
+    assert with_mn.mn_m == pytest.approx(0.5)
+    assert with_mn.apparent_resistivity_ohm_m == without_mn.apparent_resistivity_ohm_m

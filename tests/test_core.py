@@ -129,6 +129,8 @@ def test_overflowing_result_is_rejected() -> None:
             "too large",
         ),
         ({"spacing_ab2_original": 1e306, "spacing_unit": "km"}, "spacing_ab2", "too large"),
+        ({"mn_original": 0.0, "mn_unit": "m"}, "mn", "must be positive"),
+        ({"mn_original": 1.0, "mn_unit": "ft"}, "mn", "unsupported length unit"),
     ],
 )
 def test_calculation_errors_name_the_offending_field(

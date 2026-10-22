@@ -67,9 +67,10 @@ def _convert_field(
 def calculate_measurement(measurement: Measurement) -> MeasurementResult:
     """Convert and calculate one independent measurement without aggregation.
 
-    Input problems raise :class:`MeasurementFieldError` naming the offending field. AB/2,
-    when supplied, must be positive. A negative apparent resistivity is kept and flagged
-    with :attr:`MeasurementWarning.NEGATIVE_APPARENT_RESISTIVITY`.
+    Input problems raise :class:`MeasurementFieldError` naming the offending field. AB/2 and
+    MN, when supplied, must be positive; MN is recorded as metadata and does not enter the
+    equation, because K is supplied in the measurement. A negative apparent resistivity is
+    kept and flagged with :attr:`MeasurementWarning.NEGATIVE_APPARENT_RESISTIVITY`.
     """
     delta_v_v = _convert_field(
         "delta_v",
@@ -106,6 +107,14 @@ def calculate_measurement(measurement: Measurement) -> MeasurementResult:
         if spacing_ab2_m <= 0.0:
             raise MeasurementFieldError("spacing_ab2", "must be positive")
 
+    mn_m = None
+    if measurement.mn_original is not None and measurement.mn_unit is not None:
+        mn_m = _convert_field(
+            "mn", convert_length_to_meters, measurement.mn_original, measurement.mn_unit
+        )
+        if mn_m <= 0.0:
+            raise MeasurementFieldError("mn", "must be positive")
+
     rho_a = apparent_resistivity(delta_v_v, current_a, geometric_factor_m)
     warnings = (MeasurementWarning.NEGATIVE_APPARENT_RESISTIVITY,) if rho_a < 0.0 else ()
 
@@ -117,4 +126,5 @@ def calculate_measurement(measurement: Measurement) -> MeasurementResult:
         spacing_ab2_m=spacing_ab2_m,
         apparent_resistivity_ohm_m=rho_a,
         warnings=warnings,
+        mn_m=mn_m,
     )

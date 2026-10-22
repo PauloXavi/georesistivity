@@ -11,6 +11,7 @@ __version__ = "0.2.0"
 
 _EXPORTS: dict[str, str] = {
     "AmbiguousNumberError": "georesistivity.validation",
+    "GeometryError": "georesistivity.geometry",
     "Measurement": "georesistivity.models",
     "MeasurementField": "georesistivity.models",
     "MeasurementFieldError": "georesistivity.models",
@@ -25,16 +26,20 @@ _EXPORTS: dict[str, str] = {
     "convert_voltage_to_volts": "georesistivity.units",
     "create_resistivity_figure": "georesistivity.plotting",
     "find_log_incompatible_points": "georesistivity.plotting",
+    "general_geometric_factor": "georesistivity.geometry",
+    "geometric_factor": "georesistivity.geometry",
     "measurement_result_to_record": "georesistivity.io",
     "measurement_results_to_csv": "georesistivity.io",
     "measurement_results_to_dataframe": "georesistivity.io",
     "parse_number": "georesistivity.validation",
     "prepare_plot_points": "georesistivity.plotting",
+    "schlumberger_geometric_factor": "georesistivity.geometry",
 }
 
 __all__ = [
     "TABLE_COLUMNS",
     "AmbiguousNumberError",
+    "GeometryError",
     "Measurement",
     "MeasurementField",
     "MeasurementFieldError",
@@ -49,11 +54,14 @@ __all__ = [
     "convert_voltage_to_volts",
     "create_resistivity_figure",
     "find_log_incompatible_points",
+    "general_geometric_factor",
+    "geometric_factor",
     "measurement_result_to_record",
     "measurement_results_to_csv",
     "measurement_results_to_dataframe",
     "parse_number",
     "prepare_plot_points",
+    "schlumberger_geometric_factor",
 ]
 
 
@@ -73,6 +81,12 @@ def __dir__() -> list[str]:
 
 if TYPE_CHECKING:
     from georesistivity.core import apparent_resistivity, calculate_measurement
+    from georesistivity.geometry import (
+        GeometryError,
+        general_geometric_factor,
+        geometric_factor,
+        schlumberger_geometric_factor,
+    )
     from georesistivity.io import (
         TABLE_COLUMNS,
         measurement_result_to_record,

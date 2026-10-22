@@ -183,3 +183,26 @@ def test_warnings_are_recorded_in_table_and_csv() -> None:
     assert pd.isna(dataframe["Warnings"].iloc[1])
     assert rows[0]["Warnings"] == "negative_apparent_resistivity"
     assert rows[1]["Warnings"] == ""
+
+
+def test_mn_is_exported_with_original_and_si_values() -> None:
+    measurement = Measurement(
+        delta_v_original=100.0,
+        voltage_unit="mV",
+        current_original=20.0,
+        current_unit="mA",
+        geometric_factor_original=626.7477,
+        geometric_factor_unit="m",
+        spacing_ab2_original=20.0,
+        spacing_unit="m",
+        mn_original=200.0,
+        mn_unit="cm",
+    )
+
+    rows = list(
+        csv.DictReader(StringIO(measurement_results_to_csv([calculate_measurement(measurement)])))
+    )
+
+    assert rows[0]["MN"] == "200.0"
+    assert rows[0]["MN unit"] == "cm"
+    assert rows[0]["MN [m]"] == "2.0"
