@@ -5,6 +5,7 @@ This module only renders widgets and forwards user actions. Input rules live in
 """
 
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 
 from georesistivity.app import state
 from georesistivity.app.common import (
@@ -15,6 +16,11 @@ from georesistivity.app.common import (
     WARNING_MESSAGES,
 )
 from georesistivity.app.field_sheet_view import render_field_sheet
+from georesistivity.app.project_view import (
+    autosave,
+    render_project_controls,
+    render_survey_details,
+)
 from georesistivity.formatting import NumberFormat, format_full_precision, format_significant
 from georesistivity.geometry import ARRAY_PARAMETERS, ArrayType, GeometryParameter
 from georesistivity.io import (
@@ -74,11 +80,16 @@ GEOMETRY_LABELS: dict[GeometryParameter, str] = {
 SCHLUMBERGER_FORMULA = r"K = \pi \, \frac{(AB/2)^2 - (MN/2)^2}{MN}"
 
 
-def render_sidebar() -> None:
-    """Render preferences, project context, and the approved scientific basis."""
+def render_sidebar() -> DeltaGenerator:
+    """Render preferences, project context, and the scientific basis.
+
+    Returns the container of the project controls, which are filled in at the end of the run,
+    once the field-sheet editor has produced the rows to save.
+    """
     with st.sidebar:
         st.header("GeoResistivity")
         st.caption("Scientific calculation workspace")
+        project_slot = st.container()
 
         st.subheader("Preferences")
         st.selectbox(
@@ -127,6 +138,7 @@ def render_sidebar() -> None:
             "computing purposes. Interpretation of electrical resistivity data requires "
             "knowledge of the acquisition geometry and geological context."
         )
+    return project_slot
 
 
 def submit_measurement() -> None:
@@ -465,7 +477,7 @@ def main() -> None:
         initial_sidebar_state="auto",
     )
     state.initialize()
-    render_sidebar()
+    project_slot = render_sidebar()
 
     st.title("GeoResistivity")
     st.caption("Apparent Resistivity Calculator")
@@ -476,6 +488,7 @@ def main() -> None:
 
     sheet_tab, single_tab = st.tabs(["Field sheet (VES)", "Single measurement"])
     with sheet_tab:
+        render_survey_details()
         render_field_sheet()
     with single_tab:
         render_measurement_form()
@@ -485,6 +498,11 @@ def main() -> None:
         results = state.measurements()
         render_measurements(results)
         render_plot(results)
+
+    project = state.current_project()
+    autosave(project)
+    with project_slot:
+        render_project_controls(project)
 
 
 if __name__ == "__main__":

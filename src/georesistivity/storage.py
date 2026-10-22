@@ -28,6 +28,8 @@ from georesistivity.project import (
 )
 
 HOME_VARIABLE = "GEORESISTIVITY_HOME"
+AUTOSAVE_VARIABLE = "GEORESISTIVITY_AUTOSAVE"
+"""Set to ``0`` to disable autosave, for example on a shared server."""
 _AUTOSAVE_PREFIX = "session-"
 _TEMPLATE_SUFFIX = ".template.json"
 
@@ -36,6 +38,11 @@ def data_home() -> Path:
     """Directory of the local GeoResistivity files."""
     override = os.environ.get(HOME_VARIABLE)
     return Path(override) if override else Path.home() / "GeoResistivity"
+
+
+def autosave_enabled() -> bool:
+    """Whether the interface autosaves; disabled when ``GEORESISTIVITY_AUTOSAVE`` is ``0``."""
+    return os.environ.get(AUTOSAVE_VARIABLE, "1").strip() != "0"
 
 
 def autosave_dir() -> Path:

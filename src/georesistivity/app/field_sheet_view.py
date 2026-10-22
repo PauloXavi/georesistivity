@@ -16,6 +16,8 @@ from georesistivity.field_sheet import SheetColumn, SheetOutcome, SheetRow, eval
 from georesistivity.formatting import NumberFormat, format_full_precision, format_significant
 from georesistivity.io import sounding_points_to_csv, sounding_readings_to_csv
 from georesistivity.plotting import create_sounding_figure, find_unplottable_sounding_points
+from georesistivity.project import SheetTemplate
+from georesistivity.storage import list_templates, save_template
 from georesistivity.survey import PointResult
 
 MARKER = "Marker"
@@ -116,8 +118,8 @@ def _render_settings() -> None:
     with limit_column:
         st.number_input(
             "CV limit [%]",
-            min_value=0.5,
-            max_value=50.0,
+            min_value=state.CV_LIMIT_RANGE[0],
+            max_value=state.CV_LIMIT_RANGE[1],
             step=0.5,
             key=state.SHEET_CV_LIMIT,
             help="Repeated readings of one position whose coefficient of variation exceeds "
@@ -178,22 +180,74 @@ def _render_exports(points: tuple[PointResult, ...]) -> None:
         )
 
 
-def _render_new_sheet() -> None:
-    if not state.sheet_confirm_new():
-        if st.button("New sheet", icon=":material/note_add:", key="sheet_new"):
-            state.set_sheet_confirm_new(True)
-            st.rerun()
+STANDARD_LAYOUT = ""
+
+
+def save_layout_as_template() -> None:
+    """Button callback: save the current layout, before the layout list is drawn again."""
+    try:
+        template = SheetTemplate.from_rows(
+            st.session_state[state.TEMPLATE_NAME], state.current_sheet_rows()
+        )
+        path = save_template(template)
+    except (ValueError, OSError) as exc:
+        state.set_template_message(("error", f"The template was not saved: {exc}"))
         return
-    st.warning("Start a new sheet? Every value typed in this sheet will be discarded.")
-    confirm_column, cancel_column = st.columns(2)
-    with confirm_column:
-        if st.button("Discard and start new sheet", type="primary", key="sheet_new_confirm"):
-            state.reset_sheet()
-            st.rerun()
-    with cancel_column:
-        if st.button("Cancel", key="sheet_new_cancel"):
-            state.set_sheet_confirm_new(False)
-            st.rerun()
+    state.set_template_message(("success", f"Template '{template.name}' saved in {path.parent}."))
+
+
+def _layout_label(choice: str) -> str:
+    return "Standard field sheet (45 positions)" if choice == STANDARD_LAYOUT else choice
+
+
+def _render_layout_tools() -> None:
+    templates = {template.name: template for template in list_templates()}
+    with st.expander("New sheet and templates", icon=":material/note_add:"):
+        st.selectbox(
+            "Layout for a new sheet",
+            options=(STANDARD_LAYOUT, *templates),
+            format_func=_layout_label,
+            key=state.TEMPLATE_CHOICE,
+        )
+        if not state.sheet_confirm_new():
+            if st.button("New sheet", icon=":material/note_add:", key="sheet_new"):
+                state.set_sheet_confirm_new(True)
+                st.rerun()
+        else:
+            st.warning("Start a new sheet? Every value typed in this sheet will be discarded.")
+            confirm_column, cancel_column = st.columns(2)
+            with confirm_column:
+                if st.button(
+                    "Discard and start new sheet", type="primary", key="sheet_new_confirm"
+                ):
+                    choice = st.session_state[state.TEMPLATE_CHOICE]
+                    template = templates.get(choice)
+                    state.reset_sheet(None if template is None else template.sheet_rows())
+                    st.rerun()
+            with cancel_column:
+                if st.button("Cancel", key="sheet_new_cancel"):
+                    state.set_sheet_confirm_new(False)
+                    st.rerun()
+
+        st.divider()
+        st.caption(
+            "Save the AB/2, MN, and marker colours of this sheet as a template, without "
+            "readings, to start new sheets with them."
+        )
+        name_column, save_column = st.columns([3, 1], vertical_alignment="bottom")
+        with name_column:
+            st.text_input("Template name", key=state.TEMPLATE_NAME)
+        with save_column:
+            st.button(
+                "Save template",
+                key="save_template",
+                on_click=save_layout_as_template,
+                width="stretch",
+            )
+        message = state.template_message()
+        if message is not None:
+            (st.success if message[0] == "success" else st.error)(message[1])
+            state.set_template_message(None)  # shown once, right after saving
 
 
 def render_field_sheet() -> None:
@@ -203,7 +257,8 @@ def render_field_sheet() -> None:
         "Type \u0394V and I in the rows you read; blank rows are ignored. A second row with the "
         "same AB/2 and the next MN is an overlap reading. Add a row with the same AB/2 and MN "
         "to record a repeated reading. K uses the exact formula with MN as the full M-N "
-        "spacing. Data stays in this browser session until project files arrive."
+        "spacing. The sheet is autosaved on this computer; use Save project in the sidebar "
+        "to keep a file."
     )
     _render_settings()
 
@@ -229,8 +284,10 @@ def render_field_sheet() -> None:
     )
 
     number_format = state.number_format()
+    rows = rows_from_dataframe(edited)
+    state.set_current_sheet_rows(rows)
     outcome = evaluate_sheet(
-        rows_from_dataframe(edited),
+        rows,
         voltage_unit=voltage_unit,
         current_unit=current_unit,
         cv_threshold=state.sheet_cv_threshold(),
@@ -250,4 +307,4 @@ def render_field_sheet() -> None:
         _render_curve(points, number_format)
 
     _render_exports(points)
-    _render_new_sheet()
+    _render_layout_tools()

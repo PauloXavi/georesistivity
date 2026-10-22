@@ -12,6 +12,15 @@ from streamlit.testing.v1 import AppTest
 from georesistivity.app import MAIN_SCRIPT
 from georesistivity.app.field_sheet_view import rows_from_dataframe, rows_to_dataframe
 from georesistivity.field_sheet import SheetRow
+from georesistivity.models import Measurement
+from georesistivity.project import (
+    Project,
+    SheetSettings,
+    SurveyInfo,
+    project_from_json,
+    project_to_json,
+)
+from georesistivity.storage import write_autosave
 
 COMPATIBILITY_SCRIPT = Path(__file__).resolve().parents[1] / "app" / "app.py"
 
@@ -202,7 +211,7 @@ def test_schlumberger_mode_calculates_k_and_records_its_source(app: AppTest) -> 
 
     assert not app.exception
     assert measurement_count(app) == 1
-    assert app.metric[0].value == "2.238 Ω·m"
+    assert app.metric[0].value == "2.238 \u03a9\u00b7m"
     assert any(
         "calculated: schlumberger (AB/2 = 20 m, MN = 2 m)" in str(caption.value)
         for caption in app.caption
@@ -394,3 +403,238 @@ def test_field_sheet_summary_uses_singular_for_one_position() -> None:
     assert any(
         str(caption.value) == "1 position read at 1 AB/2 spacing." for caption in app_test.caption
     )
+
+
+def autosave_files(home: Path) -> list[Path]:
+    directory = home / "autosave"
+    return sorted(directory.glob("*.geores.json")) if directory.exists() else []
+
+
+def test_empty_session_is_not_autosaved(app: AppTest, isolated_data_home: Path) -> None:
+    assert autosave_files(isolated_data_home) == []
+    assert any("Autosave starts with the first value" in str(c.value) for c in app.caption)
+
+
+def test_sheet_and_survey_details_are_autosaved(isolated_data_home: Path) -> None:
+    app_test = sheet_app(SheetRow(marker="VD", ab2="1", mn="0,5", delta_v="80", current="40"))
+    app_test.text_input(key="survey_local").set_value("Fazenda Exemplo").run()
+    app_test.number_input(key="survey_azimuth").set_value(45.0).run()
+
+    (path,) = autosave_files(isolated_data_home)
+    saved = project_from_json(path.read_text(encoding="utf-8"))
+
+    assert path.name == f"session-{app_test.session_state['session_id']}.geores.json"
+    assert saved.sheet_rows == (
+        SheetRow(marker="VD", ab2="1", mn="0,5", delta_v="80", current="40"),
+    )
+    assert saved.survey.local == "Fazenda Exemplo"
+    assert saved.survey.azimuth_deg == 45.0
+    assert any("Autosaved at" in str(c.value) for c in app_test.caption)
+
+
+def test_single_measurements_are_autosaved(app: AppTest, isolated_data_home: Path) -> None:
+    submit(app, delta_v="125", current="35", geometric_factor="625", source="table")
+
+    (path,) = autosave_files(isolated_data_home)
+    saved = project_from_json(path.read_text(encoding="utf-8"))
+
+    assert len(saved.measurements) == 1
+    assert saved.measurements[0].geometric_factor_source == "table"
+
+
+def earlier_session_project() -> Project:
+    return Project(
+        survey=SurveyInfo(local="Fazenda Exemplo", sev_number="07", operator="P."),
+        sheet_settings=SheetSettings(voltage_unit="V", current_unit="A", cv_limit_percent=3.0),
+        sheet_rows=(
+            SheetRow(marker="AZ", ab2="1", mn="0,5", delta_v="0,08", current="0,04"),
+            SheetRow(ab2="1,3", mn="0,5"),
+        ),
+        measurements=(
+            Measurement(
+                delta_v_original=125.0,
+                voltage_unit="mV",
+                current_original=35.0,
+                current_unit="mA",
+                geometric_factor_original=625.0,
+                geometric_factor_unit="m",
+            ),
+        ),
+    )
+
+
+def test_work_from_an_earlier_session_can_be_restored(isolated_data_home: Path) -> None:
+    write_autosave("earlier", earlier_session_project())
+    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test.run()
+
+    assert any("Work from an earlier session" in str(info.value) for info in app_test.info)
+    assert any("Fazenda Exemplo · 1 readings" in str(c.value) for c in app_test.caption)
+
+    app_test.button(key="restore_earlier").click().run()
+
+    assert not app_test.exception
+    assert [s.value for s in app_test.success] == ["Opened the autosave copy."]
+    assert app_test.session_state["sheet_rows"] == list(earlier_session_project().sheet_rows)
+    assert app_test.session_state["survey_local"] == "Fazenda Exemplo"
+    assert app_test.session_state["sheet_voltage_unit"] == "V"
+    assert app_test.session_state["sheet_cv_limit_percent"] == 3.0
+    assert len(app_test.session_state["measurements"]) == 1
+    assert app_test.metric[0].value == "2.232 \u03a9\u00b7m"
+    table = points_table(app_test)
+    assert table["Marker"].tolist() == ["AZ"]
+    # The restored work continues in this session's own autosave file.
+    assert len(autosave_files(isolated_data_home)) == 2
+
+
+def test_project_that_cannot_be_shown_leaves_the_session_unchanged(
+    isolated_data_home: Path,
+) -> None:
+    unsupported = Project(
+        sheet_settings=SheetSettings(voltage_unit="uV"),
+        sheet_rows=(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),),
+    )
+    write_autosave("other", unsupported)
+    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test.run()
+
+    app_test.button(key="restore_other").click().run()
+
+    assert "unsupported DeltaV unit in the sheet: 'uV'" in error_text(app_test)
+    assert len(app_test.session_state["sheet_rows"]) == 45
+
+
+def test_autosave_can_be_switched_off(
+    monkeypatch: pytest.MonkeyPatch,
+    isolated_data_home: Path,
+) -> None:
+    monkeypatch.setenv("GEORESISTIVITY_AUTOSAVE", "0")
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+
+    assert autosave_files(isolated_data_home) == []
+    assert any("Autosave is off" in str(info.value) for info in app_test.info)
+
+
+def test_save_project_is_enabled_only_with_content(app: AppTest) -> None:
+    save = app.get("download_button")
+    assert any(button.proto.disabled for button in save if button.proto.label == "Save project")
+
+    submit(app, delta_v="125", current="35", geometric_factor="625")
+
+    buttons = [b for b in app.get("download_button") if b.proto.label == "Save project"]
+    assert not buttons[0].proto.disabled
+
+
+def test_layout_can_be_saved_as_template_and_reused(isolated_data_home: Path) -> None:
+    app_test = sheet_app(
+        SheetRow(marker="VM", ab2="1", mn="0,5", delta_v="80", current="40"),
+        SheetRow(marker="VD", ab2="1,3", mn="0,5"),
+    )
+    app_test.text_input(key="sheet_template_name").set_value("Meu cabo").run()
+    app_test.button(key="save_template").click().run()
+
+    assert any("Template 'Meu cabo' saved" in str(s.value) for s in app_test.success)
+    assert (isolated_data_home / "templates" / "Meu_cabo.template.json").exists()
+
+    app_test.selectbox(key="sheet_template_choice").set_value("Meu cabo").run()
+    app_test.button(key="sheet_new").click().run()
+    app_test.button(key="sheet_new_confirm").click().run()
+
+    assert app_test.session_state["sheet_rows"] == [
+        SheetRow(marker="VM", ab2="1", mn="0,5"),
+        SheetRow(marker="VD", ab2="1,3", mn="0,5"),
+    ]
+
+
+def test_template_needs_a_name(isolated_data_home: Path) -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5"))
+
+    app_test.button(key="save_template").click().run()
+
+    assert "The template was not saved: a template needs a name" in error_text(app_test)
+
+
+def open_upload_script() -> None:
+    import streamlit as st
+
+    from georesistivity.app import project_view, state
+
+    class FakeUpload:
+        def __init__(self, name: str, data: bytes) -> None:
+            self.name = name
+            self._data = data
+
+        def getvalue(self) -> bytes:
+            return self._data
+
+    state.initialize()
+    upload = st.session_state.get("fake_upload")
+    st.session_state[state.OPEN_UPLOAD] = None if upload is None else FakeUpload(*upload)
+    project_view.open_uploaded_project()
+    st.write(repr(state.project_message()))
+    st.write(repr(st.session_state[state.META_LOCAL]))
+
+
+def run_open_upload(name: str, data: bytes | None) -> list[str]:
+    app_test = AppTest.from_function(open_upload_script, default_timeout=30)
+    if data is not None:
+        app_test.session_state["fake_upload"] = (name, data)
+    app_test.run()
+    assert not app_test.exception
+    return [str(markdown.value) for markdown in app_test.markdown]
+
+
+def test_opening_an_uploaded_project_replaces_the_session() -> None:
+    data = project_to_json(earlier_session_project()).encode("utf-8")
+
+    message, local = run_open_upload("SEV-07.geores.json", data)
+
+    assert message == "('success', 'Opened SEV-07.geores.json.')"
+    assert local == "'Fazenda Exemplo'"
+
+
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        (b"\xff\xfe", "not UTF-8 text"),
+        (b"{}", "this is not a GeoResistivity project"),
+        (b"{", "not valid JSON"),
+    ],
+)
+def test_opening_an_invalid_upload_reports_the_problem(data: bytes, expected: str) -> None:
+    message, local = run_open_upload("bad.json", data)
+
+    assert message.startswith("('error', ")
+    assert "Could not open bad.json: " in message
+    assert expected in message
+    assert local == "''"
+
+
+def test_no_upload_does_nothing() -> None:
+    message, _ = run_open_upload("", None)
+
+    assert message == "None"
+
+
+def test_missing_autosave_copy_reports_a_read_error(isolated_data_home: Path) -> None:
+    path = write_autosave("gone", earlier_session_project())
+    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test.run()
+    path.unlink()
+
+    app_test.button(key="restore_gone").click().run()
+
+    assert "Could not read the autosave copy" in error_text(app_test)
+
+
+def test_autosave_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    from georesistivity.app import project_view
+
+    def failing_write(*args: object, **kwargs: object) -> Path:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(project_view, "write_autosave", failing_write)
+
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+
+    assert "Autosave failed: disk full. Save the project file." in error_text(app_test)

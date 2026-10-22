@@ -1,15 +1,20 @@
 """Typed access to the Streamlit session state of the GeoResistivity interface."""
 
-from typing import Literal, cast
+from collections.abc import Sequence
+from typing import Any, Literal, cast
 
 import streamlit as st
 
+from georesistivity.app.common import CURRENT_UNITS, VOLTAGE_UNITS
+from georesistivity.core import calculate_measurement
 from georesistivity.field_sheet import SheetRow, template_rows
 from georesistivity.formatting import NumberFormat
 from georesistivity.io import CsvDialect
 from georesistivity.models import MeasurementResult
+from georesistivity.project import Project, SheetSettings, SurveyInfo
 from georesistivity.services import GeometricFactorMode, MeasurementInput
 from georesistivity.stacking import DEFAULT_CV_THRESHOLD
+from georesistivity.storage import new_session_id
 
 # Session keys. Widget keys are session keys too, so they are defined here as well.
 MEASUREMENTS = "measurements"
@@ -40,6 +45,48 @@ SHEET_CURRENT_UNIT = "sheet_current_unit"
 SHEET_CV_LIMIT = "sheet_cv_limit_percent"
 SHEET_CONFIRM_NEW = "sheet_confirm_new"
 
+SESSION_ID = "session_id"
+CURRENT_SHEET_ROWS = "current_sheet_rows"
+AUTOSAVE_DIGEST = "autosave_digest"
+AUTOSAVE_STATUS = "autosave_status"
+PROJECT_MESSAGE = "project_message"
+OPEN_UPLOAD = "open_project_upload"
+TEMPLATE_CHOICE = "sheet_template_choice"
+TEMPLATE_NAME = "sheet_template_name"
+TEMPLATE_MESSAGE = "sheet_template_message"
+
+META_NAME = "survey_name"
+META_AREA = "survey_area"
+META_LOCAL = "survey_local"
+META_SEV = "survey_sev_number"
+META_DATE = "survey_date"
+META_OPERATOR = "survey_operator"
+META_AZIMUTH = "survey_azimuth"
+META_LATITUDE = "survey_latitude"
+META_LONGITUDE = "survey_longitude"
+META_EQUIPMENT = "survey_equipment"
+META_NOTES = "survey_notes"
+# Text fields of SurveyInfo and their widget keys.
+META_TEXT_FIELDS = {
+    "name": META_NAME,
+    "area": META_AREA,
+    "local": META_LOCAL,
+    "sev_number": META_SEV,
+    "operator": META_OPERATOR,
+    "equipment": META_EQUIPMENT,
+    "notes": META_NOTES,
+}
+# Optional fields of SurveyInfo (None when empty) and their widget keys.
+META_OPTIONAL_FIELDS = {
+    "date": META_DATE,
+    "azimuth_deg": META_AZIMUTH,
+    "latitude": META_LATITUDE,
+    "longitude": META_LONGITUDE,
+}
+
+# Bounds of the CV limit input; projects outside them cannot be shown.
+CV_LIMIT_RANGE = (0.1, 100.0)
+
 K_CALCULATOR_ARRAY = "k_calculator_array"
 K_CALCULATOR_UNIT = "k_calculator_unit"
 K_CALCULATOR_PREFIX = "k_calculator_"
@@ -68,6 +115,18 @@ def initialize() -> None:
     st.session_state.setdefault(SHEET_CURRENT_UNIT, "mA")
     st.session_state.setdefault(SHEET_CV_LIMIT, 100.0 * DEFAULT_CV_THRESHOLD)
     st.session_state.setdefault(SHEET_CONFIRM_NEW, False)
+    st.session_state.setdefault(SESSION_ID, new_session_id())
+    st.session_state.setdefault(CURRENT_SHEET_ROWS, None)
+    st.session_state.setdefault(AUTOSAVE_DIGEST, None)
+    st.session_state.setdefault(AUTOSAVE_STATUS, None)
+    st.session_state.setdefault(PROJECT_MESSAGE, None)
+    st.session_state.setdefault(TEMPLATE_CHOICE, "")
+    st.session_state.setdefault(TEMPLATE_NAME, "")
+    st.session_state.setdefault(TEMPLATE_MESSAGE, None)
+    for key in META_TEXT_FIELDS.values():
+        st.session_state.setdefault(key, "")
+    for key in META_OPTIONAL_FIELDS.values():
+        st.session_state.setdefault(key, None)
 
 
 def measurements() -> list[MeasurementResult]:
@@ -158,11 +217,25 @@ def sheet_editor_key() -> str:
     return f"sheet_editor_{st.session_state[SHEET_VERSION]}"
 
 
-def reset_sheet() -> None:
-    """Start a new, empty field sheet in the current number format."""
-    st.session_state[SHEET_ROWS] = template_rows(number_format())
+def reset_sheet(rows: Sequence[SheetRow] | None = None) -> None:
+    """Start a new sheet from ``rows`` (the standard layout by default)."""
+    st.session_state[SHEET_ROWS] = (
+        list(rows) if rows is not None else template_rows(number_format())
+    )
     st.session_state[SHEET_VERSION] = cast(int, st.session_state[SHEET_VERSION]) + 1
     st.session_state[SHEET_CONFIRM_NEW] = False
+    st.session_state[CURRENT_SHEET_ROWS] = None
+
+
+def set_current_sheet_rows(rows: list[SheetRow]) -> None:
+    """Remember the rows shown by the editor in this run, for saving."""
+    st.session_state[CURRENT_SHEET_ROWS] = rows
+
+
+def current_sheet_rows() -> list[SheetRow]:
+    """Rows of the sheet as currently edited, or the starting rows before the editor runs."""
+    rows = st.session_state[CURRENT_SHEET_ROWS]
+    return cast(list[SheetRow], rows) if rows is not None else sheet_rows()
 
 
 def sheet_units() -> tuple[str, str]:
@@ -182,3 +255,100 @@ def sheet_confirm_new() -> bool:
 
 def set_sheet_confirm_new(value: bool) -> None:
     st.session_state[SHEET_CONFIRM_NEW] = value
+
+
+def session_id() -> str:
+    return cast(str, st.session_state[SESSION_ID])
+
+
+def survey_info() -> SurveyInfo:
+    """Survey details from the form widgets."""
+    state = st.session_state
+    values: dict[str, Any] = {
+        name: cast(str, state[key]).strip() for name, key in META_TEXT_FIELDS.items()
+    }
+    values.update({name: state[key] for name, key in META_OPTIONAL_FIELDS.items()})
+    return SurveyInfo(**values)
+
+
+def current_project() -> Project:
+    """Everything this session would save, as of the current run."""
+    voltage_unit, current_unit = sheet_units()
+    return Project(
+        survey=survey_info(),
+        sheet_settings=SheetSettings(
+            voltage_unit=voltage_unit,
+            current_unit=current_unit,
+            cv_limit_percent=cast(float, st.session_state[SHEET_CV_LIMIT]),
+        ),
+        sheet_rows=tuple(current_sheet_rows()),
+        measurements=tuple(result.measurement for result in measurements()),
+    )
+
+
+def apply_project(project: Project) -> None:
+    """Replace the session content with ``project``. Only valid inside a widget callback.
+
+    Everything is checked before anything changes, so a project that cannot be shown leaves
+    the session as it was.
+    """
+    settings = project.sheet_settings
+    if settings.voltage_unit not in VOLTAGE_UNITS:
+        raise ValueError(f"unsupported DeltaV unit in the sheet: {settings.voltage_unit!r}")
+    if settings.current_unit not in CURRENT_UNITS:
+        raise ValueError(f"unsupported current unit in the sheet: {settings.current_unit!r}")
+    low, high = CV_LIMIT_RANGE
+    if not low <= settings.cv_limit_percent <= high:
+        raise ValueError(f"the CV limit must be between {low:g} and {high:g}%")
+    results = [calculate_measurement(measurement) for measurement in project.measurements]
+
+    state = st.session_state
+    for name, key in META_TEXT_FIELDS.items():
+        state[key] = getattr(project.survey, name)
+    for name, key in META_OPTIONAL_FIELDS.items():
+        state[key] = getattr(project.survey, name)
+    state[SHEET_VOLTAGE_UNIT] = settings.voltage_unit
+    state[SHEET_CURRENT_UNIT] = settings.current_unit
+    state[SHEET_CV_LIMIT] = settings.cv_limit_percent
+    reset_sheet(project.sheet_rows)
+    state[MEASUREMENTS] = results
+    state[LAST_RESULT] = results[-1] if results else None
+    state[CONFIRM_CLEAR] = False
+    state[FORM_ERRORS] = []
+    state[FORM_NOTICES] = []
+    state[AUTOSAVE_DIGEST] = None
+
+
+def autosave_digest() -> str | None:
+    return cast(str | None, st.session_state[AUTOSAVE_DIGEST])
+
+
+def set_autosave_digest(digest: str) -> None:
+    st.session_state[AUTOSAVE_DIGEST] = digest
+
+
+Message = tuple[Literal["success", "info", "warning", "error"], str]
+
+
+def autosave_status() -> Message | None:
+    return cast(Message | None, st.session_state[AUTOSAVE_STATUS])
+
+
+def set_autosave_status(message: Message) -> None:
+    st.session_state[AUTOSAVE_STATUS] = message
+
+
+def project_message() -> Message | None:
+    return cast(Message | None, st.session_state[PROJECT_MESSAGE])
+
+
+def set_project_message(message: Message | None) -> None:
+    st.session_state[PROJECT_MESSAGE] = message
+
+
+def template_message() -> Message | None:
+    return cast(Message | None, st.session_state[TEMPLATE_MESSAGE])
+
+
+def set_template_message(message: Message | None) -> None:
+    st.session_state[TEMPLATE_MESSAGE] = message

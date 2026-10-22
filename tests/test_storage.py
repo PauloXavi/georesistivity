@@ -17,8 +17,10 @@ from georesistivity.project import (
     template_to_json,
 )
 from georesistivity.storage import (
+    AUTOSAVE_VARIABLE,
     HOME_VARIABLE,
     atomic_write_text,
+    autosave_enabled,
     autosave_path,
     data_home,
     list_autosaves,
@@ -29,10 +31,15 @@ from georesistivity.storage import (
 )
 
 
-@pytest.fixture(autouse=True)
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv(HOME_VARIABLE, str(tmp_path))
-    return tmp_path
+@pytest.fixture
+def home(isolated_data_home: Path) -> Path:
+    return isolated_data_home
+
+
+def test_autosave_is_enabled_unless_switched_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert autosave_enabled()
+    monkeypatch.setenv(AUTOSAVE_VARIABLE, "0")
+    assert not autosave_enabled()
 
 
 def test_data_home_defaults_to_the_user_folder(monkeypatch: pytest.MonkeyPatch) -> None:
