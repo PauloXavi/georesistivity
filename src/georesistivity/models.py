@@ -1,6 +1,16 @@
 """Domain models for individual apparent-resistivity measurements."""
 
 from dataclasses import dataclass
+from enum import StrEnum
+
+
+class MeasurementWarning(StrEnum):
+    """Quality flags attached to a calculated measurement without rejecting it."""
+
+    NEGATIVE_APPARENT_RESISTIVITY = "negative_apparent_resistivity"
+    """rho_a < 0, which usually indicates reversed polarity, swapped cables, or a reading
+    error. The sign of DeltaV and I depends on the acquisition convention, so the value is
+    kept and flagged instead of rejected."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,3 +44,4 @@ class MeasurementResult:
     geometric_factor_m: float
     spacing_ab2_m: float | None
     apparent_resistivity_ohm_m: float
+    warnings: tuple[MeasurementWarning, ...] = ()
