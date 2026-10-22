@@ -423,6 +423,11 @@ em Python (seção 10), `argparse` (seção 11), alerta de CV em 5% (seção 7.2
 `services.py`, comando `georesistivity app` (só `localhost` por padrão; `--lan` para o
 tablet).
 
+**Andamento:** M2 concluído em 2026-10-22: `geometry.py` com os quatro arranjos e a fórmula
+geral, modo "Calcular K (Schlumberger)" na tela, MN gravado nas medições, calculadora de K,
+comandos `georesistivity k`, `k table` e `calc`. Os 45 valores de K da folha de campo viraram
+teste de regressão.
+
 **Ponto de parada:** ao final do M6 eu paro, rodo o app e mostro capturas, conforme o plano.
 Também posso parar ao fim de cada marco, se você preferir revisar aos poucos.
 

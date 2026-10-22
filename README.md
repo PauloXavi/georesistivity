@@ -21,8 +21,9 @@ where:
 - $\Delta V$ is the potential difference $[V]$;
 - $I$ is the injected current $[A]$.
 
-> The geometric factor K is supplied externally. The current version does not assume or
-> calculate a specific electrode-array geometry.
+> The geometric factor K is either entered by the user or calculated from the electrode
+> geometry: Schlumberger in the measurement form, and Schlumberger, Wenner, dipole-dipole,
+> pole-dipole, or any four-electrode layout in the K calculator and the command line.
 
 ## Overview
 
@@ -55,7 +56,11 @@ rho_a = K * DeltaV / I
 - Explicit voltage-unit selection.
 - Explicit current-unit selection.
 - Explicit length-unit selection for the geometric factor $K$.
-- Optional AB/2 spacing metadata.
+- Geometric factor $K$ entered directly or calculated from AB/2 and MN with the exact
+  Schlumberger formula, with the geometry recorded as the K source.
+- K calculator for Schlumberger, Wenner-α, dipole-dipole, pole-dipole, and any four-electrode
+  layout.
+- Optional AB/2 and MN spacing metadata.
 - Decimal-point and decimal-comma parsing.
 - Rejection of ambiguous numeric formats, including thousands-like values such as `1,000`
   or `3.134`.
@@ -111,10 +116,37 @@ The optional geometric factor source records where the externally supplied value
 from, such as equipment, a table, or a field sheet. It is metadata only and does not affect the
 calculation.
 
+### Geometric factor
+
+$K$ can be typed, as before, or calculated in meters from the geometry. The measurement form
+calculates the Schlumberger $K$ from AB/2 and MN:
+
+$$
+K = \pi \, \frac{(AB/2)^2 - (MN/2)^2}{MN}
+$$
+
+MN is the **full** distance between M and N, as on the standard Schlumberger field sheet, and
+must be smaller than AB. The formula is exact, so $K$ stays correct for any MN < AB. A
+measurement with $(AB/2)/(MN/2) < 4$ is accepted with the `schlumberger_wide_mn` warning; the
+standard field sheet itself goes down to 4.0 (AB/2 = 1.0 m with MN = 0.5 m). The test suite
+reproduces all 45 values of that sheet's pre-computed K table to their last printed digit.
+
+The K calculator and `georesistivity k` also cover:
+
+| Array | Parameters | $K$ |
+| --- | --- | --- |
+| Wenner-α | spacing $a$ | $2\pi a$ |
+| Dipole-dipole | dipole length $a$, factor $n$ | $\pi n (n+1)(n+2) a$ |
+| Pole-dipole (remote B) | dipole length $a$, factor $n$ | $2\pi n (n+1) a$ |
+| General | distances AM, BM, AN, BN | $2\pi / (1/AM - 1/BM - 1/AN + 1/BN)$ |
+
+Each shortcut is tested against the general formula. MN is recorded with the measurement and
+exported, but, like AB/2, it does not enter $\rho_a = K \Delta V / I$ once $K$ is known.
+
 ### Sign policy
 
 - $K$ must be positive, as it is for conventional four-electrode arrays.
-- AB/2, when supplied, must be positive.
+- AB/2 and MN, when supplied, must be positive.
 - $\Delta V$ and $I$ keep their sign because the sign convention depends on the acquisition
   setup. A negative $\rho_a$ is kept and flagged with the `negative_apparent_resistivity`
   warning, shown in the interface and recorded in the `Warnings` column. It usually indicates
@@ -278,6 +310,39 @@ rho_a = 2232.142857... ohm.m
 The interface displays `2.232 Ω·m` in pt-BR format or `2,232 Ω·m` in en format. AB/2 is
 metadata associated with the measurement record and is not used in this equation.
 
+With **Calculate K (Schlumberger)**, AB/2 = `20 m` and MN = `2 m` give
+$K = \pi (20^2 - 1^2) / 2 = 626.7477...$ m and $\rho_a$ = `2.238 Ω·m` for the same ΔV and I.
+
+## Command Line
+
+```bash
+georesistivity k schlumberger --ab2 20m --mn 2m
+```
+
+```text
+K = 626,747734391 m
+```
+
+```bash
+georesistivity calc --dv 125mV --i 35mA --ab2 20m --mn 2m
+```
+
+```text
+rho_a = 2238,38476568 ohm.m
+K = 626,747734391 m (calculated: schlumberger (AB/2 = 20 m, MN = 2 m))
+```
+
+| Command | Purpose |
+| --- | --- |
+| `georesistivity app` | Start the interface (see Quick Start). |
+| `georesistivity k ARRAY ...` | K for `schlumberger`, `wenner`, `dipole-dipole`, `pole-dipole`, or `general`. |
+| `georesistivity k table` | Schlumberger K table by AB/2 and MN; defaults to the standard field-sheet spacings. |
+| `georesistivity calc ...` | $\rho_a$ for one reading, with `--k` or with `--ab2` and `--mn`. |
+
+Every length or electrical value takes its unit (`20m`, `2000cm`, `125mV`); write negative
+values with an equals sign (`--dv=-125mV`). `--number-format en` prints a decimal point.
+`georesistivity COMMAND --help` lists every option.
+
 ## Demonstration Data
 
 [`examples/sample_measurements.csv`](examples/sample_measurements.csv) contains the sample
@@ -301,6 +366,7 @@ GeoResistivity/
 │   ├── cli.py
 │   ├── core.py
 │   ├── formatting.py
+│   ├── geometry.py
 │   ├── io.py
 │   ├── models.py
 │   ├── plotting.py
@@ -320,6 +386,7 @@ GeoResistivity/
 | `src/georesistivity/cli.py` | The `georesistivity` command. |
 | `app/app.py` | Compatibility entry point for `streamlit run app/app.py`. |
 | `src/georesistivity/core.py` | Pure scientific calculation and measurement processing. |
+| `src/georesistivity/geometry.py` | Geometric factor $K$ of four-electrode arrays and the field-sheet K table. |
 | `src/georesistivity/models.py` | Immutable measurement and result models, warnings, and field errors. |
 | `src/georesistivity/units.py` | Explicit conversion of supported units to SI. |
 | `src/georesistivity/validation.py` | Safe numeric parsing and finite-value validation. |
@@ -366,10 +433,12 @@ python -m mypy
 python -m pip_audit --skip-editable
 ```
 
-The current suite contains **211 automated tests** with branch coverage enforced at 95%,
+The current suite contains **356 automated tests** with branch coverage enforced at 95%,
 covering:
 
 - scientific calculation and sign policy;
+- geometric factors, including the field-sheet K table and every array against the general
+  formula;
 - unit conversions;
 - numeric parsing and validation;
 - measurement and result models;
@@ -403,9 +472,9 @@ pre-commit install
 
 GeoResistivity deliberately keeps its scientific scope narrow. The current version does not:
 
-- determine electrode geometry;
-- calculate the geometric factor $K$;
-- assume Schlumberger, Wenner, dipole-dipole, or any other electrode array;
+- determine electrode geometry automatically;
+- calculate $K$ in the measurement form for arrays other than Schlumberger (use the K
+  calculator or `georesistivity k`, then enter $K$);
 - implement a specific vertical electrical sounding (SEV) workflow;
 - perform inversion;
 - construct pseudosections;

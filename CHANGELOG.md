@@ -15,11 +15,24 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
 - `georesistivity.services`: Streamlit-free use cases for evaluating a measurement
   submission (`MeasurementInput`, `SubmissionOutcome`, `evaluate_submission`).
 - Phase 3 architecture in `docs/ARCHITECTURE.md`.
+- `georesistivity.geometry`: geometric factor K for Schlumberger (exact formula, MN as the full
+  spacing), Wenner-alpha, dipole-dipole, pole-dipole, and the general four-electrode layout,
+  plus the standard field-sheet spacings and `schlumberger_k_table`.
+- Measurement form option **Calculate K (Schlumberger)**: K from AB/2 and MN, with the
+  geometry recorded as the K source.
+- K calculator in the interface for every supported array.
+- `georesistivity k` (K per array and the field-sheet K table) and `georesistivity calc` (rho_a
+  of one reading).
+- MN on measurements (`Measurement.mn_original`, `MeasurementResult.mn_m`) and MN columns in
+  the table and CSV (C-05).
+- `MeasurementWarning.SCHLUMBERGER_WIDE_MN` for (AB/2)/(MN/2) below 4.
+- `units.split_quantity` and `format_significant(grouping=False)`.
 
 ### Changed
 
 - The Streamlit interface moved into the package as `georesistivity.app`, with typed session
   access in `georesistivity.app.state`. `app/app.py` remains as a compatibility entry point.
+- The table and CSV gain `MN`, `MN unit`, and `MN [m]` columns.
 - **Security:** the interface started with `georesistivity app` listens on `localhost` only.
   Streamlit's default listens on every network interface; network access now requires
   `--lan`.
