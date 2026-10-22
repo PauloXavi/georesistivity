@@ -75,7 +75,7 @@ def create_resistivity_figure(
     )
     axes.set_title("Apparent Resistivity vs. Electrode Spacing")
     axes.set_xlabel("AB/2 [m]")
-    axes.set_ylabel("Apparent resistivity [ohm.m]")
+    axes.set_ylabel("Apparent resistivity [\u03a9\u00b7m]")
     if scale == "log-log":
         axes.set_xscale("log")
         axes.set_yscale("log")

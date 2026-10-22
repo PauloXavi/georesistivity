@@ -71,6 +71,6 @@ def test_figure_has_scientific_labels_and_requested_scale() -> None:
 
     assert axes.get_title() == "Apparent Resistivity vs. Electrode Spacing"
     assert axes.get_xlabel() == "AB/2 [m]"
-    assert axes.get_ylabel() == "Apparent resistivity [ohm.m]"
+    assert axes.get_ylabel() == "Apparent resistivity [\u03a9\u00b7m]"
     assert axes.get_xscale() == "log"
     assert axes.get_yscale() == "log"

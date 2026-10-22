@@ -1,0 +1,9 @@
+# Streamlit reads this file when the app is started from the repository root.
+
+[browser]
+# Do not send usage statistics to Streamlit.
+gatherUsageStats = false
+
+[client]
+# Hide developer-only toolbar entries such as "Deploy".
+toolbarMode = "viewer"
