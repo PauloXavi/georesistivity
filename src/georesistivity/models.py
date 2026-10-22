@@ -29,6 +29,12 @@ class MeasurementWarning(StrEnum):
     :data:`georesistivity.geometry.SCHLUMBERGER_MIN_RATIO`. K is exact, but the reading
     averages the potential over an unusually wide interval."""
 
+    STACK_HIGH_VARIATION = "stack_high_variation"
+    """Repeated readings at one position vary more than the coefficient-of-variation limit."""
+
+    STACK_MIXED_SIGNS = "stack_mixed_signs"
+    """Repeated readings at one position have transfer resistances of both signs."""
+
 
 @dataclass(frozen=True, slots=True)
 class Measurement:

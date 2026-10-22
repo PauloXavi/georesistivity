@@ -49,6 +49,29 @@ FIELD_SHEET_AB2_M: tuple[float, ...] = (
 FIELD_SHEET_MN_M: tuple[float, ...] = (0.5, 2.0, 5.0, 20.0, 50.0, 100.0)
 """MN spacings [m] (full M-N distance) of the standard Schlumberger field sheet."""
 
+FIELD_SHEET_MN_RANGES_M: dict[float, tuple[float, float]] = {
+    0.5: (1.0, 24.0),
+    2.0: (5.5, 75.0),
+    5.0: (18.0, 240.0),
+    20.0: (55.0, 320.0),
+    50.0: (130.0, 320.0),
+    100.0: (240.0, 320.0),
+}
+"""First and last AB/2 [m] for which the standard field sheet tabulates K for each MN [m].
+
+The ranges overlap, which is where an AB/2 is read with two MN (overlap readings).
+"""
+
+
+def field_sheet_cells() -> tuple[tuple[float, float], ...]:
+    """Return the (AB/2, MN) pairs [m] of the standard field sheet, by AB/2 and then MN."""
+    return tuple(
+        (ab2, mn)
+        for ab2 in FIELD_SHEET_AB2_M
+        for mn in FIELD_SHEET_MN_M
+        if FIELD_SHEET_MN_RANGES_M[mn][0] <= ab2 <= FIELD_SHEET_MN_RANGES_M[mn][1]
+    )
+
 
 class GeometryError(ValueError):
     """An electrode-geometry parameter that does not define a valid array."""

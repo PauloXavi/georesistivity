@@ -15,6 +15,7 @@ from georesistivity.geometry import (
     SCHLUMBERGER_MIN_RATIO,
     GeometryError,
     dipole_dipole_geometric_factor,
+    field_sheet_cells,
     general_geometric_factor,
     geometric_factor,
     pole_dipole_geometric_factor,
@@ -243,3 +244,16 @@ def test_k_table_leaves_invalid_cells_empty() -> None:
 def test_k_table_still_rejects_invalid_spacings() -> None:
     with pytest.raises(GeometryError, match="ab2: must be positive"):
         schlumberger_k_table([0.0], [1.0])
+
+
+def test_field_sheet_cells_are_the_printed_k_table() -> None:
+    expected = tuple((ab2, mn) for ab2, mn, _ in FIELD_SHEET_CELLS)
+
+    assert field_sheet_cells() == expected
+
+
+def test_field_sheet_ranges_overlap_for_overlap_readings() -> None:
+    cells = field_sheet_cells()
+    overlap_ab2 = {ab2 for ab2, _ in cells if sum(1 for other, _ in cells if other == ab2) > 1}
+
+    assert {5.5, 7.5, 10.0, 13.0, 18.0, 24.0} <= overlap_ab2
