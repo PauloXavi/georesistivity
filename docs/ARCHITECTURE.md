@@ -1,6 +1,7 @@
-# Arquitetura proposta — GeoResistivity (Fase 3)
+# Arquitetura — GeoResistivity (Fase 3)
 
-- **Status:** proposta, aguardando as decisões da seção 13
+- **Status:** aprovada em 2026-10-22 (D-5 a D-8 conforme as recomendações); D-9 pendente
+  até o M3
 - **Data:** 2026-10-22
 - **Base:** versão `0.2.0` (branch `phase-2/hardening`)
 - **Escopo:** levar o GeoResistivity de calculadora de sessão a software de campo e escritório
@@ -392,15 +393,15 @@ georesistivity export levantamento.geores.json --format excel-pt-br -o medidas.c
 
 ---
 
-## 13. Decisões necessárias
+## 13. Decisões
 
-| ID | Decisão | Recomendação |
+| ID | Decisão | Recomendação e status |
 | --- | --- | --- |
-| D-5 | Onde o app vai rodar no campo (seção 3) | **A — Streamlit local**, com acesso pelo tablet via hotspot e a arquitetura pronta para C. |
-| D-6 | Persistência (seção 8) | **Arquivo de projeto JSON + autosave**. |
-| D-7 | Estimador das leituras repetidas (seção 7.2) | **Média das razões**, K · mean(ΔV_i/I_i). |
-| D-8 | Arranjos do cálculo de K na P1 (seção 7.1) | **Schlumberger como fluxo principal**, com a folha de campo digital, como na folha real. Wenner, dipolo-dipolo, polo-dipolo e a fórmula geral só como calculadoras de K, porque o custo é baixo e já estão conferidas. |
-| D-9 | Detalhes da folha de campo (seção 1.1) | Confirmar: (a) o que é o segundo par de colunas ΔV/I à direita (leitura repetida? leitura de superposição com o próximo MN?); (b) o que significam os códigos VN, VD, AM, AZ, VM… ao lado de AB/2 (cores de marcação no cabo?). |
+| D-5 | Onde o app vai rodar no campo (seção 3) | **A — Streamlit local**, com acesso pelo tablet via hotspot e a arquitetura pronta para C. **Aprovada.** |
+| D-6 | Persistência (seção 8) | **Arquivo de projeto JSON + autosave**. **Aprovada.** |
+| D-7 | Estimador das leituras repetidas (seção 7.2) | **Média das razões**, K · mean(ΔV_i/I_i). **Aprovada.** |
+| D-8 | Arranjos do cálculo de K na P1 (seção 7.1) | **Schlumberger como fluxo principal**, com a folha de campo digital, como na folha real. Wenner, dipolo-dipolo, polo-dipolo e a fórmula geral só como calculadoras de K, porque o custo é baixo e já estão conferidas. **Aprovada.** |
+| D-9 | Detalhes da folha de campo (seção 1.1) | Confirmar: (a) o que é o segundo par de colunas ΔV/I à direita (leitura repetida? leitura de superposição com o próximo MN?); (b) o que significam os códigos VN, VD, AM, AZ, VM… ao lado de AB/2 (cores de marcação no cabo?). **Pendente até o M3.** |
 
 Decisões técnicas que tomei e que você pode reverter: camadas da seção 4, catálogos de i18n
 em Python (seção 10), `argparse` (seção 11), alerta de CV em 5% (seção 7.2).
