@@ -1,7 +1,6 @@
 # Arquitetura — GeoResistivity (Fase 3)
 
-- **Status:** aprovada em 2026-10-22 (D-5 a D-8 conforme as recomendações); D-9 pendente
-  até o M3
+- **Status:** aprovada em 2026-10-22 (D-5 a D-9)
 - **Data:** 2026-10-22
 - **Base:** versão `0.2.0` (branch `phase-2/hardening`)
 - **Escopo:** levar o GeoResistivity de calculadora de sessão a software de campo e escritório
@@ -44,10 +43,10 @@ precisa reproduzir:
   50 · 100 m. Cada MN cobre uma faixa de AB/2, e as faixas **se sobrepõem** em 2 a 4 linhas
   (por exemplo, AB/2 = 18 e 24 m têm K para MN = 0,5, 2 e 5 m). São os segmentos de
   superposição do item C-06.
-- **Entrada por linha:** o operador anota ΔV e I e calcula ρa. Há um segundo par de colunas
-  ΔV/I à direita, cujo uso precisa ser confirmado (D-9).
-- **Códigos por linha** (VN, VD, AM, AZ, VM…) ao lado de AB/2, provavelmente marcas de cor
-  no cabo ou no carretel. Também precisam ser confirmados (D-9).
+- **Entrada por linha:** o operador anota ΔV e I e calcula ρa. O segundo par de colunas
+  ΔV/I à direita é a **leitura de superposição** com o próximo MN no mesmo AB/2 (D-9).
+- **Códigos por linha** (VN, VD, AM, AZ, VM…) ao lado de AB/2: as **cores de marcação no
+  cabo/carretel** de cada posição de AB/2 (D-9).
 - **Papel bilog** para plotar ρa (Ω·m) × AB/2 (m) em escala log-log fixa, com AB/2 de 1 a
   1000 m e ρa de 1 a 10 000 Ω·m.
 
@@ -401,7 +400,7 @@ georesistivity export levantamento.geores.json --format excel-pt-br -o medidas.c
 | D-6 | Persistência (seção 8) | **Arquivo de projeto JSON + autosave**. **Aprovada.** |
 | D-7 | Estimador das leituras repetidas (seção 7.2) | **Média das razões**, K · mean(ΔV_i/I_i). **Aprovada.** |
 | D-8 | Arranjos do cálculo de K na P1 (seção 7.1) | **Schlumberger como fluxo principal**, com a folha de campo digital, como na folha real. Wenner, dipolo-dipolo, polo-dipolo e a fórmula geral só como calculadoras de K, porque o custo é baixo e já estão conferidas. **Aprovada.** |
-| D-9 | Detalhes da folha de campo (seção 1.1) | Confirmar: (a) o que é o segundo par de colunas ΔV/I à direita (leitura repetida? leitura de superposição com o próximo MN?); (b) o que significam os códigos VN, VD, AM, AZ, VM… ao lado de AB/2 (cores de marcação no cabo?). **Pendente até o M3.** |
+| D-9 | Detalhes da folha de campo (seção 1.1) | Confirmar: (a) o que é o segundo par de colunas ΔV/I à direita (leitura repetida? leitura de superposição com o próximo MN?); (b) o que significam os códigos VN, VD, AM, AZ, VM… ao lado de AB/2 (cores de marcação no cabo?). **Respondida:** (a) é a leitura de superposição com o próximo MN no mesmo AB/2; (b) são as cores de marcação no cabo/carretel para cada AB/2. |
 
 Decisões técnicas que tomei e que você pode reverter: camadas da seção 4, catálogos de i18n
 em Python (seção 10), `argparse` (seção 11), alerta de CV em 5% (seção 7.2).
