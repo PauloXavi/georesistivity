@@ -531,3 +531,56 @@ for i, v in enumerate(["125", "35", "1,000", "", ""]):
 at.button[0].click().run()
 print(at.metric[0].value)  # '3.57 ohm·m' — o valor pretendido era 3,571.43
 ```
+
+---
+
+## 7. Status após a Fase 2
+
+Atualizado em 2026-10-22, versão `0.2.0`, branch `phase-2/hardening`. Decisões aplicadas:
+D-1 (rejeitar números ambíguos e oferecer a preferência de formato, pt-BR por padrão),
+D-2 (rejeitar K ≤ 0 e AB/2 ≤ 0 e avisar quando ρa < 0), D-3 (licença MIT) e D-4 (4 dígitos
+significativos).
+
+| Verificação | Antes | Depois |
+| --- | --- | --- |
+| Testes | 53 | 187 (inclui 15 de interface e 10 de propriedade) |
+| Cobertura | 97% (linhas, só o núcleo) | 97,8% (linhas e ramos, núcleo e interface; mínimo de 95% na CI) |
+| `mypy --strict` | 2 erros | 0 |
+| `import georesistivity` | ~450 ms | ~9 ms |
+| CI | 3.11 / Ubuntu | 3.11–3.13 / Ubuntu, Windows e macOS, mais mypy e pip-audit |
+
+| ID | Status | Observação |
+| --- | --- | --- |
+| V-01 | Corrigido | `1,000` e `3.134` geram `AmbiguousNumberError` com as duas grafias sugeridas. |
+| V-02 | Corrigido | Gramática ASCII explícita. |
+| V-03 | Corrigido | `μ` grego aceito; espaços em volta da unidade são ignorados. |
+| C-01 | Corrigido | Conforme D-2. |
+| C-02 | Corrigido | Overflow e underflow na conversão são rejeitados. |
+| C-03 | Corrigido | Conversão por deslocamento decimal exato: 0 divergências em 12 000 valores testados. |
+| C-04 | Corrigido | Conforme D-1 e D-4. |
+| C-05 | Fase 3 | MN/2, data e hora e identificação da estação. |
+| C-06 | Fase 3 | Depende de MN/2. |
+| C-07 | Fase 3 | Média de leituras e exportação de figura. |
+| C-08 | Fase 3 | Depende do cálculo de K. |
+| U-01 | Corrigido | Todos os campos inválidos são listados com o nome. |
+| U-02 | Parcial | Limpeza dos campos e aviso de duplicata feitos. Editar ou excluir qualquer linha fica para a Fase 3. |
+| U-03 | Fase 3 | Persistência. |
+| U-04 | Parcial | A barra lateral e a barra de ferramentas foram corrigidas. O teclado numérico depende da arquitetura da Fase 3. |
+| U-05 | Fase 3 | Só o formato numérico pt-BR foi feito agora; os textos continuam em inglês. |
+| U-06 | Corrigido | `Ω·m` na interface e no gráfico. O CSV mantém `ohm.m` em ASCII. |
+| U-07 | Corrigido | |
+| Q-01 | Corrigido | |
+| Q-02 | Corrigido | Distribuição renomeada para `georesistivity`; Streamlit virou o extra `[app]`. |
+| Q-03 | Corrigido | MIT. |
+| Q-04 | Corrigido | Importação tardia. |
+| Q-05 | Corrigido | |
+| T-01 | Corrigido | |
+| T-02 | Corrigido | `tests/test_app.py`. |
+| T-03 | Corrigido | `tests/test_properties.py`. |
+| T-04 | Corrigido | Actions fixadas por SHA, Dependabot e pre-commit. |
+| S-01 | Corrigido | |
+| I-01 | Corrigido | Dialeto `excel-pt-br`. |
+| S-02 | Corrigido | `.streamlit/config.toml`. |
+| S-03 | Pendente (autor) | Rodar o comando da seção S-03 no clone original. |
+| S-04 | Fase 3 | Lockfile junto com a decisão de distribuição do app. |
+| L-01 | Pendente | Sugestão fora do escopo da Fase 2. |

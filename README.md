@@ -3,6 +3,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.62%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
 [![CI](https://github.com/PauloXavi/georesistivity/actions/workflows/ci.yml/badge.svg)](https://github.com/PauloXavi/georesistivity/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 GeoResistivity is a scientific Python application for apparent resistivity calculation,
 unit-aware measurement handling, validation, visualization, and CSV export.
@@ -43,9 +44,9 @@ Unit conversion to SI
       v
 rho_a = K * DeltaV / I
       |
-      +--> measurement table
+      +--> measurement table (with quality warnings)
       +--> visualization
-      +--> CSV export
+      +--> CSV export (standard or Excel pt-BR)
 ```
 
 ## Features
@@ -56,12 +57,18 @@ rho_a = K * DeltaV / I
 - Explicit length-unit selection for the geometric factor $K$.
 - Optional AB/2 spacing metadata.
 - Decimal-point and decimal-comma parsing.
-- Rejection of ambiguous numeric formats.
-- Explicit conversion to SI units before calculation.
+- Rejection of ambiguous numeric formats, including thousands-like values such as `1,000`
+  or `3.134`.
+- Explicit conversion to SI units before calculation, exact to the typed decimal value.
+- Rejection of non-positive geometric factors and AB/2 values.
+- Quality warning for negative apparent resistivity.
+- Error messages that name the offending field.
 - Preservation of original inputs and converted values.
 - Multiple independent measurements in one session.
 - Preservation of acquisition order.
-- Tabular result display and CSV export.
+- Results displayed with four significant digits in pt-BR or en number format.
+- Tabular result display and CSV export in standard or Excel pt-BR format.
+- Protection of exported CSV files against spreadsheet formula injection.
 - Apparent resistivity versus electrode spacing visualization.
 - Optional visualization sorting by AB/2 without reordering the table.
 - Linear and log-log plotting.
@@ -96,11 +103,22 @@ $$
 $$
 
 The scientific core works internally in volts, amperes, and meters. Values entered in other
-supported units are converted explicitly to SI before the calculation is performed.
+supported units are converted explicitly to SI before the calculation is performed. The
+conversion shifts the typed decimal value by an exact power of ten, so `9 mV` becomes exactly
+`0.009 V` rather than `0.009000000000000001 V`.
 
 The optional geometric factor source records where the externally supplied value of $K$ came
 from, such as equipment, a table, or a field sheet. It is metadata only and does not affect the
 calculation.
+
+### Sign policy
+
+- $K$ must be positive, as it is for conventional four-electrode arrays.
+- AB/2, when supplied, must be positive.
+- $\Delta V$ and $I$ keep their sign because the sign convention depends on the acquisition
+  setup. A negative $\rho_a$ is kept and flagged with the `negative_apparent_resistivity`
+  warning, shown in the interface and recorded in the `Warnings` column. It usually indicates
+  reversed polarity, swapped cables, or a reading error.
 
 ## Supported Units
 
@@ -113,8 +131,9 @@ The core library supports the following units:
 | Length | `m`, `cm`, `mm`, `km` | `m` |
 
 The Streamlit interface offers `V`, `mV`, and `µV` for voltage; `A`, `mA`, and `µA` for
-current; and `m`, `cm`, `mm`, and `km` for length. The ASCII forms `uV` and `uA` are aliases
-accepted by the core library, while the interface presents the `µ` symbol in its selectors.
+current; and `m`, `cm`, `mm`, and `km` for length. The core library also accepts the ASCII
+forms `uV` and `uA`, and both the micro sign (U+00B5) and the Greek letter mu (U+03BC). Unit
+names are case-sensitive, so `mV` (millivolt) is never confused with `MV`.
 
 The geometric factor $K$ is converted to meters. When AB/2 is supplied, it is also converted
 to meters and retained as spacing metadata, but it does not participate in the apparent
@@ -122,15 +141,47 @@ resistivity equation.
 
 ## Numeric Input and Validation
 
-Numeric text input accepts either a decimal point (`10.5`) or a decimal comma (`10,5`). A value
-containing both separators is rejected as ambiguous, and thousands separators are not
-explicitly supported. This is intentionally narrow numeric parsing rather than complete
-locale-aware formatting.
+Numeric text input uses ASCII digits, an optional sign, at most one decimal separator, and an
+optional exponent:
 
-NaN and infinite values are rejected. A zero current and a zero geometric factor are also
-rejected because they do not produce a valid calculation. The library preserves negative
-signs: negative potential difference or current values are not rejected automatically, and
-their physical sign convention depends on the acquisition context.
+| Input | Result |
+| --- | --- |
+| `10.5`, `10,5` | 10.5 |
+| `0,125`, `0.125` | 0.125 |
+| `1,5e-3` | 0.0015 |
+| `1000`, `1000,25` | 1000, 1000.25 |
+| `1,000`, `3.134`, `12,500` | rejected as ambiguous |
+| `1.234,5`, `1,000,000` | rejected: thousands separators are not accepted |
+| `1_000`, non-ASCII digits | rejected |
+
+A value with a single separator after a one-to-three-digit non-zero integer part and exactly
+three fractional digits is rejected because it reads equally well as a thousands separator
+(`1,000` = 1000) or as a decimal separator (`1,000` = 1.0). The error message suggests both
+unambiguous spellings: `1000` for the integer, or `1,0000` for the decimal value.
+
+NaN and infinite values are rejected. A zero current is rejected because it does not produce
+a valid calculation. Values that overflow or underflow to zero during unit conversion are
+rejected with an explicit message.
+
+## Displayed Results
+
+The latest result is shown with four significant digits in the number format selected in the
+sidebar: `pt-BR` (default, `2.232 Ω·m`) or `en` (`2,232 Ω·m`). Very small or very large values
+use scientific notation (`2,947 × 10⁻⁴`). The **Converted values** panel shows the SI values
+with up to 12 significant digits.
+
+## CSV Export
+
+The sidebar selects the export format:
+
+| Format | Encoding | Separator | Decimal |
+| --- | --- | --- | --- |
+| Standard | UTF-8 | `,` | `.` |
+| Excel pt-BR | UTF-8 with BOM | `;` | `,` |
+
+Use **Excel pt-BR** to open the file directly in Microsoft Excel configured for Brazilian
+Portuguese. Free-text cells that start with `=`, `+`, `-`, `@`, a tab, or a carriage return are
+prefixed with an apostrophe so that spreadsheet applications do not evaluate them as formulas.
 
 ## Visualization Behavior
 
@@ -153,7 +204,7 @@ cd georesistivity
 python -m venv .venv
 source .venv/bin/activate
 
-python -m pip install -e .
+python -m pip install -e ".[app]"
 ```
 
 On Windows, activate the environment with:
@@ -162,13 +213,32 @@ On Windows, activate the environment with:
 .venv\Scripts\activate
 ```
 
-Start the application with:
+Start the application from the repository root, so that `.streamlit/config.toml` is applied:
 
 ```bash
 python -m streamlit run app/app.py
 ```
 
 Streamlit will print the local application URL after startup.
+
+To use only the scientific library, without the web interface, install it without extras:
+
+```bash
+python -m pip install -e .
+```
+
+### Troubleshooting on macOS
+
+If `import georesistivity` fails with `ModuleNotFoundError` right after an editable install on
+Python 3.13, check whether the environment's `.pth` files are marked as hidden:
+
+```bash
+ls -lO .venv/lib/python3.*/site-packages/*.pth
+```
+
+Python 3.13 ignores hidden `.pth` files. Some synced folders, such as an iCloud Desktop, mark
+everything inside dot-directories as hidden. Create the environment in a directory without a
+leading dot (for example `python -m venv venv`) or outside the synced folder.
 
 ## Example Calculation
 
@@ -195,8 +265,8 @@ The calculated result is:
 rho_a = 2232.142857... ohm.m
 ```
 
-The interface displays the rounded value `2,232.14 ohm·m`. AB/2 is metadata associated with
-the measurement record and is not used in this equation.
+The interface displays `2.232 Ω·m` in pt-BR format or `2,232 Ω·m` in en format. AB/2 is
+metadata associated with the measurement record and is not used in this equation.
 
 ## Demonstration Data
 
@@ -216,6 +286,7 @@ GeoResistivity/
 │   └── app.py
 ├── src/georesistivity/
 │   ├── core.py
+│   ├── formatting.py
 │   ├── io.py
 │   ├── models.py
 │   ├── plotting.py
@@ -231,19 +302,21 @@ GeoResistivity/
 | --- | --- |
 | `app/` | Streamlit presentation layer and session interaction. |
 | `src/georesistivity/core.py` | Pure scientific calculation and measurement processing. |
-| `src/georesistivity/models.py` | Immutable measurement and result data models. |
+| `src/georesistivity/models.py` | Immutable measurement and result models, warnings, and field errors. |
 | `src/georesistivity/units.py` | Explicit conversion of supported units to SI. |
 | `src/georesistivity/validation.py` | Safe numeric parsing and finite-value validation. |
+| `src/georesistivity/formatting.py` | Locale-aware, significant-digit presentation of results. |
 | `src/georesistivity/io.py` | Tabular representation and CSV serialization. |
 | `src/georesistivity/plotting.py` | Plot-point preparation, scale validation, and Matplotlib figures. |
-| `tests/` | Automated scientific and software tests. |
+| `tests/` | Automated scientific, property-based, and interface tests. |
 | `examples/` | Synthetic demonstration data. |
 | `legacy/` | Historical academic prototypes, not imported by the modern application. |
-| `docs/` | Project documentation assets. |
+| `docs/` | Project documentation, including the [technical audit](docs/AUDIT.md). |
 
 The modern application keeps the Streamlit presentation layer separate from the scientific
 and data-processing modules. The scientific calculation can therefore be tested without the
-web interface.
+web interface, and the library does not depend on Streamlit. Importing the package loads
+pandas and Matplotlib only when a tabular or plotting function is used.
 
 ## Project History
 
@@ -253,30 +326,47 @@ Python application with explicit validation, unit conversion, tabular export, an
 visualization. Historical prototypes are preserved under `legacy/` to document the project's
 development history and are not executed by the modern application.
 
+See [`CHANGELOG.md`](CHANGELOG.md) for the changes in each version.
+
 ## Tests and Code Quality
 
-Install the development tools with:
+Install the application and development tools with:
 
 ```bash
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[app,dev]"
 ```
 
 Run the automated tests and code-quality checks from the repository root:
 
 ```bash
-python -m pytest
+python -m pytest --cov
 python -m ruff check .
 python -m ruff format --check .
+python -m mypy
+python -m pip_audit --skip-editable
 ```
 
-The current suite contains **53 automated tests** covering:
+The current suite contains **187 automated tests** with branch coverage enforced at 95%,
+covering:
 
-- scientific calculation;
+- scientific calculation and sign policy;
 - unit conversions;
 - numeric parsing and validation;
 - measurement and result models;
-- tabular and CSV transformations;
-- plotting-data preparation and scale validation.
+- result formatting;
+- tabular and CSV transformations, including CSV dialects and formula-injection protection;
+- plotting-data preparation and scale validation;
+- the Streamlit interface, through Streamlit's `AppTest`;
+- properties checked with Hypothesis, such as rejection of every thousands-like pattern.
+
+CI runs the tests on Python 3.11, 3.12, and 3.13 on Linux, Windows, and macOS, plus Ruff,
+mypy in strict mode, and pip-audit. An optional [pre-commit](https://pre-commit.com/)
+configuration runs Ruff before each commit:
+
+```bash
+python -m pip install pre-commit
+pre-commit install
+```
 
 ## Tech Stack
 
@@ -284,8 +374,8 @@ The current suite contains **53 automated tests** covering:
 - Streamlit
 - pandas
 - Matplotlib
-- pytest
-- Ruff
+- pytest, Hypothesis, and pytest-cov
+- Ruff and mypy
 
 ## Limitations
 
@@ -315,7 +405,12 @@ remain available in the session table and CSV export without spacing-based visua
 ## Data & Privacy
 
 The bundled sample measurements are synthetic and provided for demonstration and testing
-purposes.
+purposes. The application does not send usage statistics: `.streamlit/config.toml` disables
+Streamlit's usage-statistics collection.
+
+## License
+
+GeoResistivity is released under the [MIT License](LICENSE).
 
 ## Author
 
