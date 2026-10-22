@@ -6,6 +6,7 @@ from typing import Literal
 import pandas as pd
 
 from georesistivity.models import MeasurementResult
+from georesistivity.spreadsheet import neutralize_spreadsheet_formula
 from georesistivity.survey import PointResult
 
 CsvDialect = Literal["standard", "excel-pt-br"]
@@ -45,9 +46,6 @@ _TEXT_COLUMNS = (
     "Warnings",
 )
 
-# Spreadsheet applications evaluate cells starting with these characters as formulas.
-# See OWASP "CSV Injection".
-_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 _UTF8_BOM = "\ufeff"
 
@@ -90,13 +88,6 @@ def measurement_results_to_dataframe(
         for index, result in enumerate(results, start=1)
     ]
     return pd.DataFrame(records, columns=TABLE_COLUMNS)
-
-
-def neutralize_spreadsheet_formula(value: object) -> object:
-    """Prefix text that a spreadsheet would evaluate as a formula with an apostrophe."""
-    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
-        return f"'{value}"
-    return value
 
 
 def _to_csv(

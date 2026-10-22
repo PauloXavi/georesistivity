@@ -68,14 +68,27 @@ def format_full_precision(value: float, *, number_format: NumberFormat = "pt-BR"
     return _localize(f"{number:.12g}", number_format)
 
 
-def format_for_input(value: float, *, number_format: NumberFormat = "pt-BR") -> str:
+def format_for_input(
+    value: float,
+    *,
+    number_format: NumberFormat = "pt-BR",
+    exact: bool = False,
+) -> str:
     """Format a value as text that :func:`~georesistivity.validation.parse_number` reads back
-    exactly and never rejects as ambiguous.
+    and never rejects as ambiguous.
 
-    Up to 12 significant digits, no grouping; a trailing zero is added when the text would look
-    like a thousands-grouped integer (``1,234`` becomes ``1,2340``).
+    By default up to 12 significant digits; with ``exact`` the shortest text that reads back
+    the same float. No grouping; a trailing zero is added when the text would look like a
+    thousands-grouped integer (``1,234`` becomes ``1,2340``).
     """
-    text = format_full_precision(value, number_format=number_format)
+    if exact:
+        number = ensure_finite_number(value, "value")
+        text = repr(number)
+        if text.endswith(".0"):
+            text = text[:-2]
+        text = _localize(text, number_format)
+    else:
+        text = format_full_precision(value, number_format=number_format)
     if not is_ambiguous_number_text(text):
         return text
     mantissa, _, exponent = text.partition("e")
