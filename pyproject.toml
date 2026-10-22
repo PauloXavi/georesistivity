@@ -70,8 +70,8 @@ branch = true
 source = ["georesistivity", "app"]
 
 [tool.coverage.report]
+fail_under = 95
 show_missing = true
-skip_covered = false
 
 [tool.mypy]
 strict = true

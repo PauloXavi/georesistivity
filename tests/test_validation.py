@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from georesistivity.validation import AmbiguousNumberError, parse_number
+from georesistivity.validation import AmbiguousNumberError, ensure_finite_number, parse_number
 
 
 @pytest.mark.parametrize(
@@ -121,3 +121,9 @@ def test_non_plain_numeric_syntax_is_rejected(raw_value: str) -> None:
 def test_overflowing_or_non_finite_text_is_rejected(raw_value: str) -> None:
     with pytest.raises(ValueError, match="must be finite"):
         parse_number(raw_value)
+
+
+@pytest.mark.parametrize("value", [True, "1.0", None])
+def test_ensure_finite_number_rejects_non_real_values(value: object) -> None:
+    with pytest.raises(TypeError, match="must be a real number"):
+        ensure_finite_number(value, "field")  # type: ignore[arg-type]

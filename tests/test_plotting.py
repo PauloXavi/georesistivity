@@ -74,3 +74,15 @@ def test_figure_has_scientific_labels_and_requested_scale() -> None:
     assert axes.get_ylabel() == "Apparent resistivity [\u03a9\u00b7m]"
     assert axes.get_xscale() == "log"
     assert axes.get_yscale() == "log"
+
+
+def test_figure_requires_at_least_two_points() -> None:
+    with pytest.raises(ValueError, match="at least two plot points"):
+        create_resistivity_figure((PlotPoint(1, 1.0, 10.0),))
+
+
+def test_figure_rejects_unknown_scale() -> None:
+    points = (PlotPoint(1, 1.0, 10.0), PlotPoint(2, 2.0, 20.0))
+
+    with pytest.raises(ValueError, match="unsupported plot scale"):
+        create_resistivity_figure(points, scale="semilog")  # type: ignore[arg-type]

@@ -80,7 +80,7 @@ def test_csv_export_contains_original_si_and_result_values() -> None:
 
 
 def test_sample_dataset_is_synthetic_and_scientifically_consistent() -> None:
-    sample_path = Path("examples/sample_measurements.csv")
+    sample_path = Path(__file__).resolve().parents[1] / "examples" / "sample_measurements.csv"
     with sample_path.open(encoding="utf-8", newline="") as sample_file:
         rows = list(csv.DictReader(sample_file))
 
