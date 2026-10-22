@@ -183,3 +183,71 @@ def test_compatibility_script_runs_the_same_interface() -> None:
 
     assert not app_test.exception
     assert app_test.metric[0].value == "2.232 \u03a9\u00b7m"
+
+
+def submit_schlumberger(app: AppTest, *, ab2: str, mn: str) -> AppTest:
+    app.radio(key="geometric_factor_mode").set_value("schlumberger").run()
+    app.text_input(key="delta_v_raw").set_value("125")
+    app.text_input(key="current_raw").set_value("35")
+    app.text_input(key="spacing_raw").set_value(ab2)
+    app.text_input(key="mn_raw").set_value(mn)
+    return app.button(key="submit_measurement").click().run()
+
+
+def test_schlumberger_mode_calculates_k_and_records_its_source(app: AppTest) -> None:
+    submit_schlumberger(app, ab2="20", mn="2")
+
+    assert not app.exception
+    assert measurement_count(app) == 1
+    assert app.metric[0].value == "2.238 Ω·m"
+    assert any(
+        "calculated: schlumberger (AB/2 = 20 m, MN = 2 m)" in str(caption.value)
+        for caption in app.caption
+    )
+    # MN stays filled for the next reading of the same segment; AB/2 is cleared.
+    assert app.text_input(key="mn_raw").value == "2"
+    assert app.text_input(key="spacing_raw").value == ""
+
+
+def test_schlumberger_mode_hides_the_typed_k_field(app: AppTest) -> None:
+    app.radio(key="geometric_factor_mode").set_value("schlumberger").run()
+
+    assert "Geometric Factor K" not in [text_input.label for text_input in app.text_input]
+
+
+def test_schlumberger_mode_requires_mn(app: AppTest) -> None:
+    submit_schlumberger(app, ab2="20", mn="")
+
+    assert measurement_count(app) == 0
+    assert "**MN:** is required to calculate K" in error_text(app)
+
+
+def test_schlumberger_mode_rejects_mn_wider_than_ab(app: AppTest) -> None:
+    submit_schlumberger(app, ab2="1", mn="3")
+
+    assert measurement_count(app) == 0
+    assert "**MN:** MN/2 must be smaller than AB/2" in error_text(app)
+
+
+def test_wide_mn_shows_a_warning(app: AppTest) -> None:
+    submit_schlumberger(app, ab2="1", mn="0,8")
+
+    assert measurement_count(app) == 1
+    assert any("MN is wide" in str(warning.value) for warning in app.warning)
+
+
+def test_k_calculator_for_wenner(app: AppTest) -> None:
+    app.selectbox(key="k_calculator_array").set_value("wenner").run()
+    app.text_input(key="k_calculator_wenner_a").set_value("10")
+    app.button(key="calculate_k").click().run()
+
+    assert [success.value for success in app.success] == ["K = 62,8318530718 m"]
+
+
+def test_k_calculator_reports_invalid_parameters(app: AppTest) -> None:
+    app.selectbox(key="k_calculator_array").set_value("dipole-dipole").run()
+    app.text_input(key="k_calculator_dipole-dipole_a").set_value("5")
+    app.text_input(key="k_calculator_dipole-dipole_n").set_value("0")
+    app.button(key="calculate_k").click().run()
+
+    assert "**n (dimensionless):** must be positive" in error_text(app)

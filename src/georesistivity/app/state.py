@@ -7,7 +7,7 @@ import streamlit as st
 from georesistivity.formatting import NumberFormat
 from georesistivity.io import CsvDialect
 from georesistivity.models import MeasurementResult
-from georesistivity.services import MeasurementInput
+from georesistivity.services import GeometricFactorMode, MeasurementInput
 
 # Session keys. Widget keys are session keys too, so they are defined here as well.
 MEASUREMENTS = "measurements"
@@ -27,8 +27,16 @@ GEOMETRIC_FACTOR_UNIT = "geometric_factor_unit"
 SPACING = "spacing_raw"
 SPACING_UNIT = "spacing_unit"
 GEOMETRIC_FACTOR_SOURCE = "geometric_factor_source"
+MN = "mn_raw"
+MN_UNIT = "mn_unit"
+K_MODE = "geometric_factor_mode"
 
-# Numeric text fields cleared after a measurement is added; units and K source are kept.
+K_CALCULATOR_ARRAY = "k_calculator_array"
+K_CALCULATOR_UNIT = "k_calculator_unit"
+K_CALCULATOR_PREFIX = "k_calculator_"
+
+# Numeric text fields cleared after a measurement is added. Units, MN, and the K source are
+# kept, because they usually stay the same over several readings.
 VALUE_FIELDS = (DELTA_V, CURRENT, GEOMETRIC_FACTOR, SPACING)
 
 NoticeKind = Literal["success", "warning"]
@@ -44,6 +52,7 @@ def initialize() -> None:
     st.session_state.setdefault(FORM_NOTICES, [])
     st.session_state.setdefault(NUMBER_FORMAT, "pt-BR")
     st.session_state.setdefault(CSV_DIALECT, "standard")
+    st.session_state.setdefault(K_MODE, "external")
 
 
 def measurements() -> list[MeasurementResult]:
@@ -91,19 +100,30 @@ def csv_dialect() -> CsvDialect:
     return cast(CsvDialect, st.session_state[CSV_DIALECT])
 
 
+def geometric_factor_mode() -> GeometricFactorMode:
+    return cast(GeometricFactorMode, st.session_state[K_MODE])
+
+
 def measurement_input() -> MeasurementInput:
-    """Read the measurement form widgets."""
+    """Read the measurement form widgets.
+
+    Widgets that the current K mode does not show have no session entry, so they read as
+    empty.
+    """
     state = st.session_state
     return MeasurementInput(
-        delta_v=state[DELTA_V],
+        delta_v=state.get(DELTA_V, ""),
         voltage_unit=state[VOLTAGE_UNIT],
-        current=state[CURRENT],
+        current=state.get(CURRENT, ""),
         current_unit=state[CURRENT_UNIT],
-        geometric_factor=state[GEOMETRIC_FACTOR],
-        geometric_factor_unit=state[GEOMETRIC_FACTOR_UNIT],
-        spacing_ab2=state[SPACING],
+        geometric_factor=state.get(GEOMETRIC_FACTOR, ""),
+        geometric_factor_unit=state.get(GEOMETRIC_FACTOR_UNIT, "m"),
+        spacing_ab2=state.get(SPACING, ""),
         spacing_unit=state[SPACING_UNIT],
-        geometric_factor_source=state[GEOMETRIC_FACTOR_SOURCE],
+        geometric_factor_source=state.get(GEOMETRIC_FACTOR_SOURCE, ""),
+        mn=state.get(MN, ""),
+        mn_unit=state[MN_UNIT],
+        geometric_factor_mode=geometric_factor_mode(),
     )
 
 

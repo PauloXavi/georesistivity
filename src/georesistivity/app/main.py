@@ -8,6 +8,7 @@ import streamlit as st
 
 from georesistivity.app import state
 from georesistivity.formatting import NumberFormat, format_full_precision, format_significant
+from georesistivity.geometry import ARRAY_PARAMETERS, ArrayType, GeometryParameter
 from georesistivity.io import (
     CsvDialect,
     measurement_results_to_csv,
@@ -20,7 +21,11 @@ from georesistivity.plotting import (
     find_log_incompatible_points,
     prepare_plot_points,
 )
-from georesistivity.services import evaluate_submission
+from georesistivity.services import (
+    GeometricFactorMode,
+    calculate_geometric_factor,
+    evaluate_submission,
+)
 
 VOLTAGE_UNITS = ("V", "mV", "µV")
 CURRENT_UNITS = ("A", "mA", "µA")
@@ -40,13 +45,41 @@ FIELD_LABELS: dict[MeasurementField, str] = {
     "current": "Current",
     "geometric_factor": "Geometric factor K",
     "spacing_ab2": "AB/2",
+    "mn": "MN",
 }
 WARNING_MESSAGES: dict[MeasurementWarning, str] = {
     MeasurementWarning.NEGATIVE_APPARENT_RESISTIVITY: (
         "Negative apparent resistivity. Check the polarity of the potential electrodes, "
         "the current direction, and the cable connections."
     ),
+    MeasurementWarning.SCHLUMBERGER_WIDE_MN: (
+        "MN is wide for this AB/2: (AB/2)/(MN/2) is below 4. K uses the exact formula and "
+        "stays correct, but the reading averages the potential over a wide interval; "
+        "consider a smaller MN at this spacing."
+    ),
 }
+K_MODES: dict[GeometricFactorMode, str] = {
+    "external": "Enter K",
+    "schlumberger": "Calculate K (Schlumberger)",
+}
+K_CALCULATOR_ARRAYS: dict[ArrayType, str] = {
+    "schlumberger": "Schlumberger",
+    "wenner": "Wenner-\u03b1",
+    "dipole-dipole": "Dipole-dipole",
+    "pole-dipole": "Pole-dipole (remote B)",
+    "general": "General four-electrode",
+}
+GEOMETRY_LABELS: dict[GeometryParameter, str] = {
+    "ab2": "AB/2",
+    "mn": "MN (full spacing)",
+    "a": "a (spacing)",
+    "n": "n (dimensionless)",
+    "am": "AM",
+    "bm": "BM",
+    "an": "AN",
+    "bn": "BN",
+}
+SCHLUMBERGER_FORMULA = r"K = \pi \, \frac{(AB/2)^2 - (MN/2)^2}{MN}"
 
 
 def render_sidebar() -> None:
@@ -88,8 +121,9 @@ def render_sidebar() -> None:
             """
         )
         st.info(
-            "The geometric factor K is supplied externally. This version does not "
-            "assume or calculate any specific electrode array geometry."
+            "K can be entered directly or calculated for the Schlumberger array from AB/2 "
+            "and MN with the exact formula. The K calculator covers Wenner, dipole-dipole, "
+            "pole-dipole, and any four-electrode layout."
         )
 
         st.subheader("Internal units")
@@ -147,6 +181,14 @@ def submit_measurement() -> None:
 def render_measurement_form() -> None:
     """Render the measurement form and the outcome of the last submission."""
     st.subheader("Measurement Input")
+    st.radio(
+        "Geometric factor K",
+        options=tuple(K_MODES),
+        format_func=K_MODES.__getitem__,
+        key=state.K_MODE,
+        horizontal=True,
+    )
+    calculated = state.geometric_factor_mode() == "schlumberger"
     with st.form("measurement_form"):
         voltage_value_column, voltage_unit_column = st.columns([3, 1])
         with voltage_value_column:
@@ -160,31 +202,49 @@ def render_measurement_form() -> None:
         with current_unit_column:
             st.selectbox("Current unit", CURRENT_UNITS, index=1, key=state.CURRENT_UNIT)
 
-        factor_value_column, factor_unit_column = st.columns([3, 1])
-        with factor_value_column:
-            st.text_input(
-                "Geometric Factor K",
-                placeholder="e.g. 5,89",
-                key=state.GEOMETRIC_FACTOR,
-            )
-        with factor_unit_column:
-            st.selectbox("K unit", LENGTH_UNITS, key=state.GEOMETRIC_FACTOR_UNIT)
+        if not calculated:
+            factor_value_column, factor_unit_column = st.columns([3, 1])
+            with factor_value_column:
+                st.text_input(
+                    "Geometric Factor K",
+                    placeholder="e.g. 5,89",
+                    key=state.GEOMETRIC_FACTOR,
+                )
+            with factor_unit_column:
+                st.selectbox("K unit", LENGTH_UNITS, key=state.GEOMETRIC_FACTOR_UNIT)
 
         spacing_value_column, spacing_unit_column = st.columns([3, 1])
         with spacing_value_column:
             st.text_input(
-                "AB/2 — optional",
-                placeholder="Leave blank if unknown",
+                "AB/2" if calculated else "AB/2 — optional",
+                placeholder="e.g. 20" if calculated else "Leave blank if unknown",
                 key=state.SPACING,
             )
         with spacing_unit_column:
             st.selectbox("Spacing unit", LENGTH_UNITS, key=state.SPACING_UNIT)
 
-        st.text_input(
-            "Geometric factor source — optional",
-            placeholder="e.g. equipment, table, field sheet",
-            key=state.GEOMETRIC_FACTOR_SOURCE,
-        )
+        mn_value_column, mn_unit_column = st.columns([3, 1])
+        with mn_value_column:
+            st.text_input(
+                "MN — full M-N spacing" if calculated else "MN — optional",
+                placeholder="e.g. 2",
+                key=state.MN,
+            )
+        with mn_unit_column:
+            st.selectbox("MN unit", LENGTH_UNITS, key=state.MN_UNIT)
+
+        if calculated:
+            st.latex(SCHLUMBERGER_FORMULA)
+            st.caption(
+                "Exact Schlumberger formula. MN is the full distance between M and N, as on "
+                "the field sheet. The K source is recorded automatically."
+            )
+        else:
+            st.text_input(
+                "Geometric factor source — optional",
+                placeholder="e.g. equipment, table, field sheet",
+                key=state.GEOMETRIC_FACTOR_SOURCE,
+            )
 
         st.form_submit_button(
             "Calculate and add measurement",
@@ -227,9 +287,60 @@ def render_latest_result() -> None:
         st.write(f"Delta V = {full(result.delta_v_v)} V")
         st.write(f"I = {full(result.current_a)} A")
         st.write(f"K = {full(result.geometric_factor_m)} m")
+        if result.measurement.geometric_factor_source is not None:
+            st.caption(f"K source: {result.measurement.geometric_factor_source}")
         if result.spacing_ab2_m is not None:
             st.write(f"AB/2 = {full(result.spacing_ab2_m)} m")
+        if result.mn_m is not None:
+            st.write(f"MN = {full(result.mn_m)} m")
         st.write(f"$\\rho_a$ = {full(rho_a)} {OHM_METER}")
+
+
+def render_k_calculator() -> None:
+    """Render a stand-alone K calculator for every supported array."""
+    with st.expander("K calculator"):
+        array_column, unit_column = st.columns([3, 1])
+        with array_column:
+            array: ArrayType = st.selectbox(
+                "Array",
+                options=tuple(K_CALCULATOR_ARRAYS),
+                format_func=K_CALCULATOR_ARRAYS.__getitem__,
+                key=state.K_CALCULATOR_ARRAY,
+            )
+        with unit_column:
+            length_unit: str = st.selectbox(
+                "Length unit", LENGTH_UNITS, key=state.K_CALCULATOR_UNIT
+            )
+
+        with st.form("k_calculator_form"):
+            parameters = ARRAY_PARAMETERS[array]
+            columns = st.columns(len(parameters))
+            raw_values: dict[GeometryParameter, str] = {}
+            for column, parameter in zip(columns, parameters, strict=True):
+                with column:
+                    raw_values[parameter] = st.text_input(
+                        GEOMETRY_LABELS[parameter],
+                        key=f"{state.K_CALCULATOR_PREFIX}{array}_{parameter}",
+                    )
+            submitted = st.form_submit_button("Calculate K", key="calculate_k")
+
+        if not submitted:
+            return
+        outcome = calculate_geometric_factor(array, raw_values, length_unit)
+        if outcome.value_m is not None:
+            value = format_full_precision(outcome.value_m, number_format=state.number_format())
+            st.success(f"K = {value} m")
+            st.caption("To use it, choose 'Enter K' and type this value with the unit m.")
+        elif outcome.issues:
+            st.error(
+                "K could not be calculated.\n\n"
+                + "\n\n".join(
+                    f"**{GEOMETRY_LABELS[parameter]}:** {reason}"
+                    for parameter, reason in outcome.issues
+                )
+            )
+        else:
+            st.error(f"K could not be calculated: {outcome.error}")
 
 
 def render_measurement_controls(results: list[MeasurementResult]) -> None:
@@ -367,12 +478,13 @@ def main() -> None:
     st.title("GeoResistivity")
     st.caption("Apparent Resistivity Calculator")
     st.write(
-        "Calculate and record apparent resistivity from the externally supplied geometric "
-        "factor and measured potential difference and current."
+        "Calculate and record apparent resistivity from the measured potential difference "
+        "and current, with the geometric factor entered or calculated from the geometry."
     )
 
     render_measurement_form()
     render_latest_result()
+    render_k_calculator()
     st.divider()
 
     results = state.measurements()

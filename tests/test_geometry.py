@@ -126,9 +126,17 @@ def test_layout_without_potential_difference_is_rejected() -> None:
         general_geometric_factor(5.0, 5.0, 5.0, 5.0)
 
 
-def test_overflowing_k_is_rejected() -> None:
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: wenner_geometric_factor(1e308),
+        lambda: schlumberger_geometric_factor(1e300, 1e-300),
+        lambda: dipole_dipole_geometric_factor(1e200, 1e100),
+    ],
+)
+def test_overflowing_k_is_rejected(call: Callable[[], float]) -> None:
     with pytest.raises(ValueError, match="too large"):
-        wenner_geometric_factor(1e308)
+        call()
 
 
 def test_swapped_potential_electrodes_give_negative_general_k() -> None:

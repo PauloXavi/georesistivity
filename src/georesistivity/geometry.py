@@ -98,7 +98,10 @@ def schlumberger_geometric_factor(ab2: float, mn: float) -> float:
     half_potential = _positive(mn, "mn") / 2.0
     if half_potential >= half_current:
         raise GeometryError("mn", "MN/2 must be smaller than AB/2")
-    return _finite_result(math.pi * (half_current**2 - half_potential**2) / (2.0 * half_potential))
+    # (L - l)(L + l) instead of L^2 - l^2: no cancellation, and overflow gives inf, not an
+    # OverflowError.
+    difference_of_squares = (half_current - half_potential) * (half_current + half_potential)
+    return _finite_result(math.pi * difference_of_squares / (2.0 * half_potential))
 
 
 def schlumberger_spacing_ratio(ab2: float, mn: float) -> float:
