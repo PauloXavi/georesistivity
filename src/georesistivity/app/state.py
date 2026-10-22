@@ -54,6 +54,7 @@ OPEN_UPLOAD = "open_project_upload"
 TEMPLATE_CHOICE = "sheet_template_choice"
 TEMPLATE_NAME = "sheet_template_name"
 TEMPLATE_MESSAGE = "sheet_template_message"
+SURVEY_EXPANDED = "survey_details_expanded"
 
 META_NAME = "survey_name"
 META_AREA = "survey_area"
@@ -123,6 +124,7 @@ def initialize() -> None:
     st.session_state.setdefault(TEMPLATE_CHOICE, "")
     st.session_state.setdefault(TEMPLATE_NAME, "")
     st.session_state.setdefault(TEMPLATE_MESSAGE, None)
+    st.session_state.setdefault(SURVEY_EXPANDED, True)
     for key in META_TEXT_FIELDS.values():
         st.session_state.setdefault(key, "")
     for key in META_OPTIONAL_FIELDS.values():
@@ -317,6 +319,7 @@ def apply_project(project: Project) -> None:
     state[FORM_ERRORS] = []
     state[FORM_NOTICES] = []
     state[AUTOSAVE_DIGEST] = None
+    state[SURVEY_EXPANDED] = project.survey.is_empty()
 
 
 def autosave_digest() -> str | None:
@@ -352,3 +355,8 @@ def template_message() -> Message | None:
 
 def set_template_message(message: Message | None) -> None:
     st.session_state[TEMPLATE_MESSAGE] = message
+
+
+def survey_expanded() -> bool:
+    """Whether the survey details open expanded; changes only when a project is loaded."""
+    return cast(bool, st.session_state[SURVEY_EXPANDED])

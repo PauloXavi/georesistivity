@@ -25,7 +25,8 @@ from georesistivity.survey import (
 from georesistivity.validation import parse_number
 
 SheetColumn = Literal["ab2", "mn", "delta_v", "current", "reason"]
-RowState = Literal["blank", "valid", "excluded", "invalid"]
+RowState = Literal["blank", "incomplete", "valid", "excluded", "invalid"]
+"""``incomplete``: only one of DeltaV and I typed so far, and nothing else wrong."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,14 +66,17 @@ class SheetOutcome:
     points: tuple[PointResult, ...]
     invalid_rows: tuple[tuple[int, RowStatus], ...] = field(init=False)
     """1-based row numbers and statuses of the rejected rows."""
+    incomplete_rows: tuple[tuple[int, RowStatus], ...] = field(init=False)
+    """1-based row numbers and statuses of rows still waiting for DeltaV or I."""
 
     def __post_init__(self) -> None:
-        invalid = tuple(
-            (number, status)
-            for number, status in enumerate(self.rows, start=1)
-            if status.state == "invalid"
-        )
-        object.__setattr__(self, "invalid_rows", invalid)
+        for name, state in (("invalid_rows", "invalid"), ("incomplete_rows", "incomplete")):
+            selected = tuple(
+                (number, status)
+                for number, status in enumerate(self.rows, start=1)
+                if status.state == state
+            )
+            object.__setattr__(self, name, selected)
 
 
 def template_rows(number_format: NumberFormat = "pt-BR") -> list[SheetRow]:
@@ -113,8 +117,13 @@ def _evaluate_row(
     issues: list[RowIssue] = []
     ab2 = _parse("ab2", row.ab2, issues)
     mn = _parse("mn", row.mn, issues)
-    delta_v = _parse("delta_v", row.delta_v, issues)
-    current = _parse("current", row.current, issues)
+    missing: SheetColumn | None = None
+    if not row.delta_v.strip():
+        missing = "delta_v"
+    elif not row.current.strip():
+        missing = "current"
+    delta_v = None if missing == "delta_v" else _parse("delta_v", row.delta_v, issues)
+    current = None if missing == "current" else _parse("current", row.current, issues)
     reason = row.reason.strip()
     if row.excluded and not reason:
         issues.append(RowIssue("reason", "is required to exclude a reading"))
@@ -127,8 +136,11 @@ def _evaluate_row(
         except ValueError as exc:
             issues.append(RowIssue("ab2", str(exc)))
 
-    if issues or ab2 is None or mn is None or delta_v is None or current is None:
+    if issues:
         return RowStatus("invalid", tuple(issues)), None
+    if missing is not None:
+        return RowStatus("incomplete", (RowIssue(missing, "not typed yet"),)), None
+    assert ab2 is not None and mn is not None and delta_v is not None and current is not None
 
     reading = Reading(
         delta_v_original=delta_v,

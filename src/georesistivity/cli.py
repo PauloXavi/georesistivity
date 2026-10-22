@@ -2,6 +2,7 @@
 
 import argparse
 import importlib.util
+import os
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -23,6 +24,7 @@ from georesistivity.geometry import (
 )
 from georesistivity.models import MeasurementField, MeasurementWarning
 from georesistivity.services import GeometricFactorMode, MeasurementInput, evaluate_submission
+from georesistivity.storage import AUTOSAVE_VARIABLE
 from georesistivity.units import convert_length_to_meters, split_quantity
 from georesistivity.validation import parse_number
 
@@ -217,6 +219,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="do not open a browser window automatically",
     )
+    app.add_argument(
+        "--no-autosave",
+        action="store_true",
+        help="do not keep autosave copies (for example on a shared server); save project "
+        "files instead",
+    )
     _add_k_parser(subcommands)
     _add_calc_parser(subcommands)
     return parser
@@ -240,7 +248,7 @@ def streamlit_command(*, port: int, lan: bool, open_browser: bool) -> list[str]:
     ]
 
 
-def run_app(*, port: int, lan: bool, open_browser: bool) -> int:
+def run_app(*, port: int, lan: bool, open_browser: bool, autosave: bool = True) -> int:
     """Start the interface and return Streamlit's exit code."""
     if importlib.util.find_spec("streamlit") is None:
         print(MISSING_STREAMLIT, file=sys.stderr)
@@ -248,8 +256,11 @@ def run_app(*, port: int, lan: bool, open_browser: bool) -> int:
     if lan:
         print(LAN_WARNING, file=sys.stderr)
     command = streamlit_command(port=port, lan=lan, open_browser=open_browser)
+    environment = {**os.environ}
+    if not autosave:
+        environment[AUTOSAVE_VARIABLE] = "0"
     try:
-        return subprocess.call(command)
+        return subprocess.call(command, env=environment)
     except KeyboardInterrupt:
         return 130
 
@@ -423,7 +434,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Entry point of the ``georesistivity`` command."""
     args = build_parser().parse_args(argv)
     if args.command == "app":
-        return run_app(port=args.port, lan=args.lan, open_browser=not args.no_browser)
+        return run_app(
+            port=args.port,
+            lan=args.lan,
+            open_browser=not args.no_browser,
+            autosave=not args.no_autosave,
+        )
     if args.command == "k" and args.array == "table":
         print(
             format_k_table(

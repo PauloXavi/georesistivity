@@ -469,7 +469,7 @@ def test_work_from_an_earlier_session_can_be_restored(isolated_data_home: Path) 
     app_test.run()
 
     assert any("Work from an earlier session" in str(info.value) for info in app_test.info)
-    assert any("Fazenda Exemplo · 1 readings" in str(c.value) for c in app_test.caption)
+    assert any("Fazenda Exemplo · 1 reading ·" in str(c.value) for c in app_test.caption)
 
     app_test.button(key="restore_earlier").click().run()
 
@@ -638,3 +638,29 @@ def test_autosave_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
 
     assert "Autosave failed: disk full. Save the project file." in error_text(app_test)
+
+
+def test_half_typed_row_waits_instead_of_failing() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80"))
+
+    assert not app_test.error
+    assert any(str(c.value) == "Waiting for a value in row 1 (I)." for c in app_test.caption)
+
+
+def test_survey_details_stay_open_while_typing() -> None:
+    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test.run()
+    app_test.text_input(key="survey_local").set_value("Fazenda").run()
+
+    assert app_test.expander[0].label == "Survey details"
+    assert app_test.session_state["survey_details_expanded"] is True
+
+
+def test_restoring_details_collapses_the_survey_panel(isolated_data_home: Path) -> None:
+    write_autosave("earlier", earlier_session_project())
+    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test.run()
+
+    app_test.button(key="restore_earlier").click().run()
+
+    assert app_test.session_state["survey_details_expanded"] is False

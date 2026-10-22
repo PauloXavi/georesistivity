@@ -87,8 +87,6 @@ def test_points_are_ordered_by_ab2_and_mn_whatever_the_row_order() -> None:
 @pytest.mark.parametrize(
     ("row", "expected"),
     [
-        (SheetRow(ab2="1", mn="0,5", delta_v="80"), RowIssue("current", "value cannot be empty")),
-        (SheetRow(ab2="1", mn="0,5", current="40"), RowIssue("delta_v", "value cannot be empty")),
         (
             SheetRow(ab2="1", mn="3", delta_v="80", current="40"),
             RowIssue("mn", "MN/2 must be smaller than AB/2"),
@@ -172,3 +170,28 @@ def test_marker_comes_from_the_first_row_that_has_one() -> None:
     )
 
     assert outcome.points[0].point.marker == "AZ"
+
+
+@pytest.mark.parametrize(
+    ("row", "missing"),
+    [
+        (SheetRow(ab2="1", mn="0,5", delta_v="80"), "current"),
+        (SheetRow(ab2="1", mn="0,5", current="40"), "delta_v"),
+    ],
+)
+def test_row_with_only_one_value_is_incomplete_not_invalid(row: SheetRow, missing: str) -> None:
+    outcome = sheet(row)
+
+    assert outcome.rows[0].state == "incomplete"
+    assert outcome.rows[0].issues == (RowIssue(missing, "not typed yet"),)  # type: ignore[arg-type]
+    assert outcome.incomplete_rows == ((1, outcome.rows[0]),)
+    assert outcome.invalid_rows == ()
+    assert outcome.points == ()
+
+
+def test_incomplete_row_with_another_problem_is_invalid() -> None:
+    outcome = sheet(SheetRow(ab2="1", mn="3", delta_v="1,000"))
+
+    assert outcome.rows[0].state == "invalid"
+    assert [issue.column for issue in outcome.rows[0].issues] == ["delta_v", "mn"]
+    assert outcome.incomplete_rows == ()

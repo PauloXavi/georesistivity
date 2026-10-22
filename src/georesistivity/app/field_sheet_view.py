@@ -128,6 +128,12 @@ def _render_settings() -> None:
 
 
 def _render_issues(outcome: SheetOutcome) -> None:
+    if outcome.incomplete_rows:
+        waiting = ", ".join(
+            f"row {number} ({COLUMN_LABELS[status.issues[0].column]})"
+            for number, status in outcome.incomplete_rows
+        )
+        st.caption(f"Waiting for a value in {waiting}.")
     if not outcome.invalid_rows:
         return
     lines = []

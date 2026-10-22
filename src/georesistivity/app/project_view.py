@@ -87,12 +87,13 @@ def _render_recovery(project: Project) -> None:
     st.info("Work from an earlier session was autosaved. Restore it to continue.")
     for entry in entries:
         survey = entry.project.survey
+        count = entry.project.reading_count()
         title = (
             survey.name or survey.local or (f"SEV {survey.sev_number}" if survey.sev_number else "")
         )
         details = [
             title or "Untitled",
-            f"{entry.project.reading_count()} readings",
+            f"{count} reading{'s' if count != 1 else ''}",
             entry.saved_at.strftime("%d/%m %H:%M"),
         ]
         st.caption(" · ".join(details))
@@ -144,8 +145,11 @@ def render_project_controls(project: Project) -> None:
 
 def render_survey_details() -> None:
     """Header of the field sheet: area, place, SEV number, date, operator, and so on."""
-    survey = state.survey_info()
-    with st.expander("Survey details", expanded=survey.is_empty(), icon=":material/assignment:"):
+    # A fixed "expanded" value keeps the panel open while typing; deriving it from the content
+    # would collapse it after the first field.
+    with st.expander(
+        "Survey details", expanded=state.survey_expanded(), icon=":material/assignment:"
+    ):
         name_column, sev_column, date_column = st.columns([3, 1, 2])
         with name_column:
             st.text_input("Survey name", key=state.META_NAME)

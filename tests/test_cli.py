@@ -62,17 +62,32 @@ def test_app_command_runs_streamlit(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], dict[str, str]]] = []
 
-    def fake_call(command: list[str]) -> int:
-        calls.append(command)
+    def fake_call(command: list[str], env: dict[str, str]) -> int:
+        calls.append((command, env))
         return 0
 
     monkeypatch.setattr(subprocess, "call", fake_call)
 
     assert cli.main(["app", "--lan", "--port", "8600", "--no-browser"]) == 0
-    assert calls == [cli.streamlit_command(port=8600, lan=True, open_browser=False)]
+    ((command, environment),) = calls
+    assert command == cli.streamlit_command(port=8600, lan=True, open_browser=False)
+    assert "GEORESISTIVITY_AUTOSAVE" not in environment
     assert "LAN mode" in capsys.readouterr().err
+
+
+def test_app_command_can_switch_autosave_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    environments: list[dict[str, str]] = []
+
+    def fake_call(command: list[str], env: dict[str, str]) -> int:
+        environments.append(env)
+        return 0
+
+    monkeypatch.setattr(subprocess, "call", fake_call)
+
+    assert cli.main(["app", "--no-autosave"]) == 0
+    assert environments[0]["GEORESISTIVITY_AUTOSAVE"] == "0"
 
 
 def test_app_command_without_streamlit_explains_the_extra(
@@ -86,7 +101,7 @@ def test_app_command_without_streamlit_explains_the_extra(
 
 
 def test_interrupting_the_app_exits_cleanly(monkeypatch: pytest.MonkeyPatch) -> None:
-    def interrupted(command: list[str]) -> int:
+    def interrupted(command: list[str], env: dict[str, str]) -> int:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(subprocess, "call", interrupted)
