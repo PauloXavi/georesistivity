@@ -11,6 +11,14 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
 ### Added
 
 - P2 proposal (milestones M7 to M10 and decisions D-10 to D-15) in `docs/ARCHITECTURE.md`.
+- Error bars on the VES curve (D-10): one standard error of the mean, $K \cdot s / \sqrt{n}$,
+  at positions with two or more valid readings, in the colour of their MN segment, with a
+  legend entry and a switch above the curve. A bar that reaches zero is dotted down to the
+  bottom of the plot and its point is circled. The axes extend to include the bar ends.
+- `plotting.SoundingErrorBar`, `plotting.sounding_error_bar`, and the `error_bars` option of
+  `create_sounding_figure`.
+- Standard-error column in the table of positions, and a caption with the number of
+  positions that have an error bar.
 
 ## [0.3.0] - 2026-10-22
 

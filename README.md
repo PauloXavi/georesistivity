@@ -240,6 +240,12 @@ The **Field sheet (VES)** tab is a digital version of the paper Schlumberger sou
   axes with whole decades (at least 1-1000 m and 1-10 000 Ω·m) and equal decade lengths on
   both axes, as on bilog paper, so it can be compared with master curves. Points with quality
   warnings are circled in red.
+- **Error bars** (on by default, with a switch above the curve) show
+  $\rho_a \pm K \cdot s / \sqrt{n}$, one standard error of the mean of $\Delta V_i / I_i$, at
+  positions with two or more valid readings; the table of positions shows the same value. A
+  position read once has no bar, and a caption says how many positions have one. A bar can
+  only reach zero when readings have opposite signs or one of them is zero; its lower part is
+  then dotted down to the bottom of the plot and the point is circled.
 - **Export points (CSV)** gives one row per position with its statistics; **Export readings
   (CSV)** gives every reading, including excluded ones and their reasons.
 

@@ -555,6 +555,17 @@ dado digitado já nasce com histórico; o custo é adiar as entregas visuais.
 
 - Fora da P2, como antes: o teclado numérico no celular (seção 16) e qualquer item da P3.
 
+**Andamento:** M7 concluído em 2026-10-22: barras de ±1 erro-padrão na curva (D-10), na cor do
+segmento de MN, com entrada na legenda, chave para ligar e desligar e uma nota dizendo
+quantas posições têm barra; coluna de erro-padrão na tabela de posições; eixos estendidos até
+as pontas das barras. Constatação: com leituras todas positivas o erro-padrão é sempre menor
+que o próprio ρa (o CV de n valores positivos é menor que √n). Por isso a barra só
+cruza o zero com leituras de sinais opostos (que já recebem aviso) ou com uma leitura zero; nos
+dois casos a parte de baixo fica pontilhada até a borda e a posição é circulada.
+Conferido no navegador: na curva da tela (uma década tem cerca de 160 pixels), a barra só passa
+do marcador quando o erro-padrão é maior que cerca de 5% do ρa, ou cerca de 10% nas posições
+circuladas. Abaixo disso, o valor é lido na coluna de erro-padrão da tabela de posições.
+
 ---
 
 ## 16. Riscos
