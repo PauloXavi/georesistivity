@@ -12,8 +12,13 @@ pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest
 
 from georesistivity.app import MAIN_SCRIPT
-from georesistivity.app.field_sheet_view import rows_from_dataframe, rows_to_dataframe
-from georesistivity.field_sheet import SheetRow
+from georesistivity.app.field_sheet_view import (
+    figure_download,
+    rows_from_dataframe,
+    rows_to_dataframe,
+)
+from georesistivity.field_sheet import SheetRow, evaluate_sheet
+from georesistivity.figures import FigureOptions
 from georesistivity.models import Measurement
 from georesistivity.project import (
     Project,
@@ -372,6 +377,51 @@ def test_field_sheet_without_positive_points_draws_no_curve() -> None:
 
     assert not app_test.exception
     assert app_test.get("image") == []
+    assert not [box for box in app_test.selectbox if box.key == "figure_format"]
+
+
+def figure_button_labels(app_test: AppTest) -> list[str]:
+    return [
+        str(button.proto.label)
+        for button in app_test.get("download_button")
+        if str(button.proto.label).startswith(("Download figure", "Baixar figura"))
+    ]
+
+
+def test_field_sheet_exports_the_curve_at_standard_size_or_to_scale() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+
+    assert app_test.selectbox(key="figure_format").value == "png"
+    assert app_test.radio(key="figure_size").value == "standard"
+    assert app_test.checkbox(key="figure_title_with_survey").value is True
+    assert figure_button_labels(app_test) == ["Download figure (PNG)"]
+    assert not [box for box in app_test.number_input if box.key == "figure_decade_mm"]
+
+    app_test.radio(key="figure_size").set_value("scale").run()
+
+    assert app_test.number_input(key="figure_decade_mm").value == 50.0
+    captions = [str(c.value) for c in app_test.caption]
+    assert any(c.startswith("Plot area: 15 \u00d7 20 cm (3 \u00d7 4 decades).") for c in captions)
+
+    app_test.number_input(key="figure_decade_mm").set_value(62.5).run()
+    app_test.selectbox(key="figure_format").set_value("pdf").run()
+
+    captions = [str(c.value) for c in app_test.caption]
+    assert any(c.startswith("Plot area: 18,75 \u00d7 25 cm") for c in captions)
+    assert figure_button_labels(app_test) == ["Download figure (PDF)"]
+    assert app_test.session_state["figure_decade_mm"] == 62.5
+
+
+def test_figure_download_draws_the_file_when_called() -> None:
+    points = evaluate_sheet(
+        [SheetRow(ab2="1", mn="0,5", delta_v="80", current="40")],
+        voltage_unit="mV",
+        current_unit="mA",
+    ).points
+
+    download = figure_download(points, SurveyInfo(sev_number="01"), FigureOptions("pdf"))
+
+    assert download().startswith(b"%PDF")
 
 
 def test_field_sheet_shows_error_bars_where_readings_repeat() -> None:
@@ -986,6 +1036,10 @@ def test_field_sheet_in_portuguese() -> None:
     assert (
         app_test.toggle(key="sheet_error_bars").label == "Barras de erro (\u00b11 erro-padr\u00e3o)"
     )
+    assert figure_button_labels(app_test) == ["Baixar figura (PNG)"]
+    app_test.radio(key="figure_size").set_value("scale").run()
+    area = "\u00c1rea do gr\u00e1fico: 15 \u00d7 20 cm (3 \u00d7 4 d\u00e9cadas)."
+    assert any(str(c.value).startswith(area) for c in app_test.caption)
     table = next(frame.value for frame in app_test.dataframe if frame.key is None)
     assert list(table.columns) == [
         "AB/2 [m]",

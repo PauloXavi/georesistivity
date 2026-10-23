@@ -6,9 +6,10 @@ from typing import Any, Literal, cast
 import streamlit as st
 
 from georesistivity.app.common import CURRENT_UNITS, VOLTAGE_UNITS
-from georesistivity.app.i18n import DEFAULT_LANGUAGE, LANGUAGE_KEY
+from georesistivity.app.i18n import DEFAULT_LANGUAGE, LANGUAGE_KEY, current_language
 from georesistivity.core import calculate_measurement
 from georesistivity.field_sheet import SheetRow, template_rows
+from georesistivity.figures import DEFAULT_DECADE_MM, FigureFormat, FigureOptions
 from georesistivity.formatting import NumberFormat
 from georesistivity.io import CsvDialect
 from georesistivity.messages import GeoValueError
@@ -46,6 +47,10 @@ SHEET_VOLTAGE_UNIT = "sheet_voltage_unit"
 SHEET_CURRENT_UNIT = "sheet_current_unit"
 SHEET_CV_LIMIT = "sheet_cv_limit_percent"
 SHEET_ERROR_BARS = "sheet_error_bars"
+FIGURE_FORMAT = "figure_format"
+FIGURE_SIZE = "figure_size"
+FIGURE_DECADE_MM = "figure_decade_mm"
+FIGURE_TITLE = "figure_title_with_survey"
 SHEET_CONFIRM_NEW = "sheet_confirm_new"
 
 SESSION_ID = "session_id"
@@ -123,6 +128,10 @@ def initialize() -> None:
     st.session_state.setdefault(SHEET_CURRENT_UNIT, "mA")
     st.session_state.setdefault(SHEET_CV_LIMIT, 100.0 * DEFAULT_CV_THRESHOLD)
     st.session_state.setdefault(SHEET_ERROR_BARS, True)
+    st.session_state.setdefault(FIGURE_FORMAT, "png")
+    st.session_state.setdefault(FIGURE_SIZE, "standard")
+    st.session_state.setdefault(FIGURE_DECADE_MM, DEFAULT_DECADE_MM)
+    st.session_state.setdefault(FIGURE_TITLE, True)
     st.session_state.setdefault(SHEET_CONFIRM_NEW, False)
     st.session_state.setdefault(SESSION_ID, new_session_id())
     st.session_state.setdefault(CURRENT_SHEET_ROWS, None)
@@ -264,6 +273,31 @@ def sheet_cv_threshold() -> float:
 def sheet_error_bars() -> bool:
     """Whether the sounding curve shows error bars."""
     return cast(bool, st.session_state[SHEET_ERROR_BARS])
+
+
+FigureSize = Literal["standard", "scale"]
+
+
+def figure_size() -> FigureSize:
+    """Standard size or bilog paper scale for the exported figure."""
+    return cast(FigureSize, st.session_state[FIGURE_SIZE])
+
+
+def figure_decade_mm() -> float:
+    """Modulus of the to-scale figure [mm per decade]."""
+    return float(cast(float, st.session_state[FIGURE_DECADE_MM]))
+
+
+def figure_options() -> FigureOptions:
+    """Export options chosen on the page, in the session language and number format."""
+    return FigureOptions(
+        file_format=cast(FigureFormat, st.session_state[FIGURE_FORMAT]),
+        decade_mm=figure_decade_mm() if figure_size() == "scale" else None,
+        error_bars=sheet_error_bars(),
+        title_with_survey=cast(bool, st.session_state[FIGURE_TITLE]),
+        language=current_language(),
+        number_format=number_format(),
+    )
 
 
 def sheet_confirm_new() -> bool:

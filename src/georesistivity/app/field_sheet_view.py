@@ -1,23 +1,42 @@
 """Field-sheet page: the digital Schlumberger sheet with its live curve."""
 
 import math
+from collections.abc import Callable, Sequence
 
 import pandas as pd
 import streamlit as st
 
 from georesistivity.app import state
 from georesistivity.app.common import CURRENT_UNITS, VOLTAGE_UNITS, warning_short
-from georesistivity.app.i18n import count, error_text, problem_text, t, t_for
+from georesistivity.app.i18n import (
+    count,
+    current_language,
+    error_text,
+    problem_text,
+    t,
+    t_for,
+    translator,
+)
 from georesistivity.field_sheet import SheetColumn, SheetOutcome, SheetRow, evaluate_sheet
+from georesistivity.figures import (
+    DECADE_MM_RANGE,
+    DEFAULT_DECADE_MM,
+    FIGURE_FORMATS,
+    FIGURE_MIME,
+    FigureOptions,
+    figure_file_name,
+    sounding_figure_file,
+    sounding_labels,
+)
 from georesistivity.formatting import NumberFormat, format_full_precision, format_significant
 from georesistivity.io import sounding_points_to_csv, sounding_readings_to_csv
 from georesistivity.plotting import (
-    SoundingFigureLabels,
     create_sounding_figure,
     find_unplottable_sounding_points,
+    sounding_decades,
     sounding_error_bar,
 )
-from georesistivity.project import SheetTemplate
+from georesistivity.project import SheetTemplate, SurveyInfo
 from georesistivity.storage import list_templates, save_template
 from georesistivity.survey import PointResult
 
@@ -148,7 +167,8 @@ def _render_issues(outcome: SheetOutcome) -> None:
     st.error(t("sheet.not_used") + "\n\n" + "\n\n".join(lines))
 
 
-def _render_curve(points: tuple[PointResult, ...], number_format: NumberFormat) -> None:
+def _render_curve(points: tuple[PointResult, ...], number_format: NumberFormat) -> bool:
+    """Draw the curve; ``False`` when no point can be plotted."""
     unplottable = find_unplottable_sounding_points(points)
     if unplottable:
         positions = ", ".join(
@@ -162,7 +182,7 @@ def _render_curve(points: tuple[PointResult, ...], number_format: NumberFormat) 
         st.warning(t("sheet.not_on_curve", positions=positions))
     plotted = sum(p.apparent_resistivity_ohm_m is not None for p in points) - len(unplottable)
     if not plotted:
-        return
+        return False
     st.toggle(t("sheet.error_bars"), key=state.SHEET_ERROR_BARS, help=t("sheet.error_bars_help"))
     error_bars = state.sheet_error_bars()
     if error_bars:
@@ -174,20 +194,88 @@ def _render_curve(points: tuple[PointResult, ...], number_format: NumberFormat) 
             )
         else:
             st.caption(t("sheet.error_bars_none"))
-    labels = SoundingFigureLabels(
-        title=t("figure.sounding_title"),
-        x_axis=t("figure.ab2_axis"),
-        y_axis=t("figure.rho_axis"),
-        mn_legend=t("figure.mn_legend", mn="{mn}"),
-        quality_warning=t("figure.quality_warning"),
-        error_bars=t("figure.error_bars"),
-    )
     figure = create_sounding_figure(
-        points, number_format=number_format, labels=labels, error_bars=error_bars
+        points,
+        number_format=number_format,
+        labels=sounding_labels(current_language()),
+        error_bars=error_bars,
     )
     # A square bilog curve at full page width would be taller than the screen; 560 px still
     # shrinks to the container on phones.
     st.pyplot(figure, width=560)
+    return True
+
+
+FORMAT_KEYS = {"png": "export.format_png", "svg": "export.format_svg", "pdf": "export.format_pdf"}
+SIZE_KEYS = {"standard": "export.size_standard", "scale": "export.size_scale"}
+
+
+def figure_download(
+    points: Sequence[PointResult], survey: SurveyInfo, options: FigureOptions
+) -> Callable[[], bytes]:
+    """File of the download button, drawn only when it is clicked (300 dpi PNG is slow)."""
+    return lambda: sounding_figure_file(points, survey, options)
+
+
+def _render_figure_export(points: tuple[PointResult, ...], number_format: NumberFormat) -> None:
+    tr = translator()
+    format_labels = {name: tr(FORMAT_KEYS[name]) for name in FIGURE_FORMATS}
+    size_labels = {name: tr(key) for name, key in SIZE_KEYS.items()}
+
+    def centimetres(value_mm: float) -> str:
+        return format_full_precision(round(value_mm / 10.0, 2), number_format=number_format)
+
+    with st.expander(t("export.title"), icon=":material/image:"):
+        format_column, size_column = st.columns(2)
+        with format_column:
+            st.selectbox(
+                t("export.format"),
+                FIGURE_FORMATS,
+                format_func=format_labels.__getitem__,
+                key=state.FIGURE_FORMAT,
+            )
+        with size_column:
+            st.radio(
+                t("export.size"),
+                tuple(SIZE_KEYS),
+                format_func=size_labels.__getitem__,
+                key=state.FIGURE_SIZE,
+            )
+        if state.figure_size() == "scale":
+            low, high = DECADE_MM_RANGE
+            default = format_full_precision(DEFAULT_DECADE_MM, number_format=number_format)
+            st.number_input(
+                t("export.decade_mm"),
+                min_value=low,
+                max_value=high,
+                step=0.5,
+                key=state.FIGURE_DECADE_MM,
+                help=t("export.decade_help", default=default),
+            )
+            x_decades, y_decades = sounding_decades(points, error_bars=state.sheet_error_bars())
+            decade_mm = state.figure_decade_mm()
+            st.caption(
+                t(
+                    "export.scale_caption",
+                    width=centimetres(x_decades * decade_mm),
+                    height=centimetres(y_decades * decade_mm),
+                    x_decades=x_decades,
+                    y_decades=y_decades,
+                )
+            )
+        st.checkbox(t("export.title_with_survey"), key=state.FIGURE_TITLE)
+
+        options = state.figure_options()
+        survey = state.survey_info()
+        st.download_button(
+            t("export.download", format=options.file_format.upper()),
+            data=figure_download(points, survey, options),
+            file_name=figure_file_name(survey, options.file_format),
+            mime=FIGURE_MIME[options.file_format],
+            icon=":material/download:",
+            on_click="ignore",
+            key="download_figure",
+        )
 
 
 def _render_exports(points: tuple[PointResult, ...]) -> None:
@@ -344,7 +432,8 @@ def render_field_sheet() -> None:
             )
         )
         st.dataframe(_points_table(points, number_format), hide_index=True, width="stretch")
-        _render_curve(points, number_format)
+        if _render_curve(points, number_format):
+            _render_figure_export(points, number_format)
 
     _render_exports(points)
     _render_layout_tools()
