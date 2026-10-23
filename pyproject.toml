@@ -90,3 +90,7 @@ extend-exclude = ["legacy"]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Interface texts use Greek letters and symbols on purpose (ρa, Wenner-α, ×).
+"src/georesistivity/app/i18n/*.py" = ["RUF001"]

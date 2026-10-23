@@ -12,6 +12,8 @@ from georesistivity import (
 )
 from georesistivity.field_sheet import SheetRow, evaluate_sheet
 from georesistivity.plotting import (
+    SoundingFigureLabels,
+    SpacingFigureLabels,
     create_sounding_figure,
     find_unplottable_sounding_points,
     sounding_segments,
@@ -171,3 +173,25 @@ def test_sounding_figure_needs_a_plottable_point() -> None:
 
     with pytest.raises(ValueError, match="positive apparent resistivity"):
         create_sounding_figure(points)
+
+
+def test_figures_accept_translated_labels() -> None:
+    spacing = create_resistivity_figure(
+        (PlotPoint(1, 1.0, 10.0), PlotPoint(2, 2.0, 20.0)),
+        labels=SpacingFigureLabels(title="Título", x_axis="AB/2 [m]", y_axis="\u03c1a"),
+    ).axes[0]
+    sounding_axes = create_sounding_figure(
+        sounding(*OVERLAP_SOUNDING),
+        labels=SoundingFigureLabels(
+            title="Sondagem", y_axis="Resistividade", mn_legend="MN de {mn} m"
+        ),
+    ).axes[0]
+
+    assert spacing.get_title() == "Título"
+    assert spacing.get_ylabel() == "\u03c1a"
+    assert sounding_axes.get_title() == "Sondagem"
+    assert sounding_axes.get_ylabel() == "Resistividade"
+    assert [text.get_text() for text in sounding_axes.get_legend().get_texts()] == [
+        "MN de 0,5 m",
+        "MN de 2 m",
+    ]

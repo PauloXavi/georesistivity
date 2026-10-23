@@ -1,7 +1,8 @@
 """Streamlit presentation layer for GeoResistivity.
 
 This module only renders widgets and forwards user actions. Input rules live in
-:mod:`georesistivity.services` and session access in :mod:`georesistivity.app.state`.
+:mod:`georesistivity.services`, session access in :mod:`georesistivity.app.state`, and texts in
+:mod:`georesistivity.app.i18n` (Portuguese by default, or English).
 """
 
 import streamlit as st
@@ -13,9 +14,10 @@ from georesistivity.app.common import (
     LENGTH_UNITS,
     OHM_METER,
     VOLTAGE_UNITS,
-    WARNING_MESSAGES,
+    warning_message,
 )
 from georesistivity.app.field_sheet_view import render_field_sheet
+from georesistivity.app.i18n import LANGUAGE_KEY, LANGUAGES, count, problem_text, t, translator
 from georesistivity.app.import_view import render_import
 from georesistivity.app.project_view import (
     autosave,
@@ -32,6 +34,7 @@ from georesistivity.io import (
 from georesistivity.models import MeasurementField, MeasurementResult
 from georesistivity.plotting import (
     PlotScale,
+    SpacingFigureLabels,
     create_resistivity_figure,
     find_log_incompatible_points,
     prepare_plot_points,
@@ -46,39 +49,32 @@ NUMBER_FORMATS: dict[NumberFormat, str] = {
     "pt-BR": "pt-BR (1.234,5)",
     "en": "en (1,234.5)",
 }
-CSV_DIALECTS: dict[CsvDialect, str] = {
-    "standard": "Standard (comma, decimal point)",
-    "excel-pt-br": "Excel pt-BR (semicolon, decimal comma)",
+CSV_DIALECT_KEYS: dict[CsvDialect, str] = {
+    "standard": "csv.standard",
+    "excel-pt-br": "csv.excel_pt_br",
 }
-FIELD_LABELS: dict[MeasurementField, str] = {
-    "delta_v": "Delta V",
-    "current": "Current",
-    "geometric_factor": "Geometric factor K",
-    "spacing_ab2": "AB/2",
-    "mn": "MN",
+K_MODE_KEYS: dict[GeometricFactorMode, str] = {
+    "external": "form.k_mode_external",
+    "schlumberger": "form.k_mode_schlumberger",
 }
-K_MODES: dict[GeometricFactorMode, str] = {
-    "external": "Enter K",
-    "schlumberger": "Calculate K (Schlumberger)",
-}
-K_CALCULATOR_ARRAYS: dict[ArrayType, str] = {
-    "schlumberger": "Schlumberger",
-    "wenner": "Wenner-\u03b1",
-    "dipole-dipole": "Dipole-dipole",
-    "pole-dipole": "Pole-dipole (remote B)",
-    "general": "General four-electrode",
-}
-GEOMETRY_LABELS: dict[GeometryParameter, str] = {
-    "ab2": "AB/2",
-    "mn": "MN (full spacing)",
-    "a": "a (spacing)",
-    "n": "n (dimensionless)",
-    "am": "AM",
-    "bm": "BM",
-    "an": "AN",
-    "bn": "BN",
-}
+K_CALCULATOR_ARRAYS: tuple[ArrayType, ...] = (
+    "schlumberger",
+    "wenner",
+    "dipole-dipole",
+    "pole-dipole",
+    "general",
+)
+SCALES: tuple[PlotScale, ...] = ("linear", "log-log")
+SCALE_KEYS: dict[PlotScale, str] = {"linear": "plot.linear", "log-log": "plot.loglog"}
 SCHLUMBERGER_FORMULA = r"K = \pi \, \frac{(AB/2)^2 - (MN/2)^2}{MN}"
+
+
+def field_label(field: MeasurementField) -> str:
+    return t(f"field.{field}")
+
+
+def parameter_label(parameter: GeometryParameter) -> str:
+    return t(f"param.{parameter}")
 
 
 def render_sidebar() -> DeltaGenerator:
@@ -87,58 +83,46 @@ def render_sidebar() -> DeltaGenerator:
     Returns the container of the project controls, which are filled in at the end of the run,
     once the field-sheet editor has produced the rows to save.
     """
+    tr = translator()
     with st.sidebar:
         st.header("GeoResistivity")
-        st.caption("Scientific calculation workspace")
+        st.caption(t("sidebar.caption"))
         project_slot = st.container()
 
-        st.subheader("Preferences")
+        st.subheader(t("sidebar.preferences"))
         st.selectbox(
-            "Number format",
+            t("sidebar.language"),
+            options=tuple(LANGUAGES),
+            format_func=LANGUAGES.__getitem__,
+            key=LANGUAGE_KEY,
+        )
+        st.selectbox(
+            t("sidebar.number_format"),
             options=tuple(NUMBER_FORMATS),
             format_func=NUMBER_FORMATS.__getitem__,
             key=state.NUMBER_FORMAT,
-            help="Used to display results. Input accepts either a comma or a period as the "
-            "decimal separator; thousands separators are not accepted.",
+            help=t("sidebar.number_format_help"),
         )
         st.selectbox(
-            "CSV export format",
-            options=tuple(CSV_DIALECTS),
-            format_func=CSV_DIALECTS.__getitem__,
+            t("sidebar.csv_format"),
+            options=tuple(CSV_DIALECT_KEYS),
+            format_func=lambda dialect: tr(CSV_DIALECT_KEYS[dialect]),
             key=state.CSV_DIALECT,
         )
 
-        st.subheader("About")
-        st.write(
-            "A modernized educational calculator for recording independent "
-            "apparent-resistivity measurements."
-        )
+        st.subheader(t("sidebar.about"))
+        st.write(t("sidebar.about_text"))
 
-        st.subheader("Scientific basis")
+        st.subheader(t("sidebar.basis"))
         st.latex(r"\rho_a = K \frac{\Delta V}{I}")
-        st.markdown(
-            """
-            - $\\rho_a$: apparent resistivity [Ω·m]
-            - $K$: geometric factor [m]
-            - $\\Delta V$: potential difference [V]
-            - $I$: injected current [A]
-            """
-        )
-        st.info(
-            "K can be entered directly or calculated for the Schlumberger array from AB/2 "
-            "and MN with the exact formula. The K calculator covers Wenner, dipole-dipole, "
-            "pole-dipole, and any four-electrode layout."
-        )
+        st.markdown(t("sidebar.basis_terms"))
+        st.info(t("sidebar.k_info"))
 
-        st.subheader("Internal units")
-        st.markdown("Voltage: **V**  \nCurrent: **A**  \nLength: **m**")
+        st.subheader(t("sidebar.units"))
+        st.markdown(t("sidebar.units_text"))
 
         st.divider()
-        st.caption(
-            "This application is intended for educational, research and scientific "
-            "computing purposes. Interpretation of electrical resistivity data requires "
-            "knowledge of the acquisition geometry and geological context."
-        )
+        st.caption(t("sidebar.disclaimer"))
     return project_slot
 
 
@@ -154,26 +138,25 @@ def submit_measurement() -> None:
     state.set_form_notices([])
     if outcome.result is None:
         if outcome.error is not None:
-            state.set_form_errors([outcome.error])
+            state.set_form_errors([problem_text(outcome.error_problem, outcome.error)])
         else:
             state.set_form_errors(
                 [
-                    f"**{FIELD_LABELS[issue.field]}:** {issue.message}"
+                    f"**{field_label(issue.field)}:** {problem_text(issue.problem, issue.message)}"
                     for issue in outcome.field_issues
                 ]
             )
         return
 
-    notices: list[state.Notice] = [("success", f"Measurement #{len(results) + 1} added.")]
+    notices: list[state.Notice] = [("success", t("form.added", number=len(results) + 1))]
     if outcome.duplicate_of is not None:
         notices.append(
             (
                 "warning",
-                f"This measurement is identical to #{outcome.duplicate_of}. If it is not an "
-                "intentional repeated reading, remove it with 'Remove last measurement'.",
+                t("form.duplicate", number=outcome.duplicate_of, remove=t("session.remove_last")),
             )
         )
-    notices.extend(("warning", WARNING_MESSAGES[warning]) for warning in outcome.result.warnings)
+    notices.extend(("warning", warning_message(warning)) for warning in outcome.result.warnings)
 
     results.append(outcome.result)
     state.set_last_result(outcome.result)
@@ -185,11 +168,12 @@ def submit_measurement() -> None:
 
 def render_measurement_form() -> None:
     """Render the measurement form and the outcome of the last submission."""
-    st.subheader("Measurement Input")
+    tr = translator()
+    st.subheader(t("form.title"))
     st.radio(
-        "Geometric factor K",
-        options=tuple(K_MODES),
-        format_func=K_MODES.__getitem__,
+        t("form.k_mode"),
+        options=tuple(K_MODE_KEYS),
+        format_func=lambda mode: tr(K_MODE_KEYS[mode]),
         key=state.K_MODE,
         horizontal=True,
     )
@@ -197,62 +181,63 @@ def render_measurement_form() -> None:
     with st.form("measurement_form"):
         voltage_value_column, voltage_unit_column = st.columns([3, 1])
         with voltage_value_column:
-            st.text_input("Delta V", placeholder="e.g. 120,5", key=state.DELTA_V)
+            st.text_input(
+                t("form.delta_v"), placeholder=t("form.delta_v_placeholder"), key=state.DELTA_V
+            )
         with voltage_unit_column:
-            st.selectbox("Voltage unit", VOLTAGE_UNITS, index=1, key=state.VOLTAGE_UNIT)
+            st.selectbox(t("form.voltage_unit"), VOLTAGE_UNITS, index=1, key=state.VOLTAGE_UNIT)
 
         current_value_column, current_unit_column = st.columns([3, 1])
         with current_value_column:
-            st.text_input("Current", placeholder="e.g. 20", key=state.CURRENT)
+            st.text_input(
+                t("form.current"), placeholder=t("form.current_placeholder"), key=state.CURRENT
+            )
         with current_unit_column:
-            st.selectbox("Current unit", CURRENT_UNITS, index=1, key=state.CURRENT_UNIT)
+            st.selectbox(t("form.current_unit"), CURRENT_UNITS, index=1, key=state.CURRENT_UNIT)
 
         if not calculated:
             factor_value_column, factor_unit_column = st.columns([3, 1])
             with factor_value_column:
                 st.text_input(
-                    "Geometric Factor K",
-                    placeholder="e.g. 5,89",
-                    key=state.GEOMETRIC_FACTOR,
+                    t("form.k"), placeholder=t("form.k_placeholder"), key=state.GEOMETRIC_FACTOR
                 )
             with factor_unit_column:
-                st.selectbox("K unit", LENGTH_UNITS, key=state.GEOMETRIC_FACTOR_UNIT)
+                st.selectbox(t("form.k_unit"), LENGTH_UNITS, key=state.GEOMETRIC_FACTOR_UNIT)
 
         spacing_value_column, spacing_unit_column = st.columns([3, 1])
         with spacing_value_column:
             st.text_input(
-                "AB/2" if calculated else "AB/2 — optional",
-                placeholder="e.g. 20" if calculated else "Leave blank if unknown",
+                t("form.ab2") if calculated else t("form.ab2_optional"),
+                placeholder=(
+                    t("form.ab2_placeholder") if calculated else t("form.ab2_placeholder_optional")
+                ),
                 key=state.SPACING,
             )
         with spacing_unit_column:
-            st.selectbox("Spacing unit", LENGTH_UNITS, key=state.SPACING_UNIT)
+            st.selectbox(t("form.spacing_unit"), LENGTH_UNITS, key=state.SPACING_UNIT)
 
         mn_value_column, mn_unit_column = st.columns([3, 1])
         with mn_value_column:
             st.text_input(
-                "MN — full M-N spacing" if calculated else "MN — optional",
-                placeholder="e.g. 2",
+                t("form.mn") if calculated else t("form.mn_optional"),
+                placeholder=t("form.mn_placeholder"),
                 key=state.MN,
             )
         with mn_unit_column:
-            st.selectbox("MN unit", LENGTH_UNITS, key=state.MN_UNIT)
+            st.selectbox(t("form.mn_unit"), LENGTH_UNITS, key=state.MN_UNIT)
 
         if calculated:
             st.latex(SCHLUMBERGER_FORMULA)
-            st.caption(
-                "Exact Schlumberger formula. MN is the full distance between M and N, as on "
-                "the field sheet. The K source is recorded automatically."
-            )
+            st.caption(t("form.formula_caption"))
         else:
             st.text_input(
-                "Geometric factor source — optional",
-                placeholder="e.g. equipment, table, field sheet",
+                t("form.source"),
+                placeholder=t("form.source_placeholder"),
                 key=state.GEOMETRIC_FACTOR_SOURCE,
             )
 
         st.form_submit_button(
-            "Calculate and add measurement",
+            t("form.submit"),
             type="primary",
             icon=":material/add:",
             width="stretch",
@@ -262,7 +247,7 @@ def render_measurement_form() -> None:
 
     errors = state.form_errors()
     if errors:
-        st.error("Measurement could not be added.\n\n" + "\n\n".join(errors))
+        st.error(t("form.not_added") + "\n\n" + "\n\n".join(errors))
 
     for kind, message in state.form_notices():
         if kind == "success":
@@ -283,17 +268,17 @@ def render_latest_result() -> None:
         return format_full_precision(value, number_format=number_format)
 
     rho_a = result.apparent_resistivity_ohm_m
-    st.subheader("Latest Result")
+    st.subheader(t("result.title"))
     st.metric(
-        "Apparent Resistivity",
+        t("result.metric"),
         f"{format_significant(rho_a, number_format=number_format)} {OHM_METER}",
     )
-    with st.expander("Converted values"):
-        st.write(f"Delta V = {full(result.delta_v_v)} V")
+    with st.expander(t("result.converted")):
+        st.write(f"ΔV = {full(result.delta_v_v)} V")
         st.write(f"I = {full(result.current_a)} A")
         st.write(f"K = {full(result.geometric_factor_m)} m")
         if result.measurement.geometric_factor_source is not None:
-            st.caption(f"K source: {result.measurement.geometric_factor_source}")
+            st.caption(t("result.k_source", source=result.measurement.geometric_factor_source))
         if result.spacing_ab2_m is not None:
             st.write(f"AB/2 = {full(result.spacing_ab2_m)} m")
         if result.mn_m is not None:
@@ -303,18 +288,19 @@ def render_latest_result() -> None:
 
 def render_k_calculator() -> None:
     """Render a stand-alone K calculator for every supported array."""
-    with st.expander("K calculator"):
+    tr = translator()
+    with st.expander(t("kcalc.title")):
         array_column, unit_column = st.columns([3, 1])
         with array_column:
             array: ArrayType = st.selectbox(
-                "Array",
-                options=tuple(K_CALCULATOR_ARRAYS),
-                format_func=K_CALCULATOR_ARRAYS.__getitem__,
+                t("kcalc.array"),
+                options=K_CALCULATOR_ARRAYS,
+                format_func=lambda name: tr(f"array.{name}"),
                 key=state.K_CALCULATOR_ARRAY,
             )
         with unit_column:
             length_unit: str = st.selectbox(
-                "Length unit", LENGTH_UNITS, key=state.K_CALCULATOR_UNIT
+                t("kcalc.length_unit"), LENGTH_UNITS, key=state.K_CALCULATOR_UNIT
             )
 
         with st.form("k_calculator_form"):
@@ -324,10 +310,10 @@ def render_k_calculator() -> None:
             for column, parameter in zip(columns, parameters, strict=True):
                 with column:
                     raw_values[parameter] = st.text_input(
-                        GEOMETRY_LABELS[parameter],
+                        parameter_label(parameter),
                         key=f"{state.K_CALCULATOR_PREFIX}{array}_{parameter}",
                     )
-            submitted = st.form_submit_button("Calculate K", key="calculate_k")
+            submitted = st.form_submit_button(t("kcalc.submit"), key="calculate_k")
 
         if not submitted:
             return
@@ -335,17 +321,20 @@ def render_k_calculator() -> None:
         if outcome.value_m is not None:
             value = format_full_precision(outcome.value_m, number_format=state.number_format())
             st.success(f"K = {value} m")
-            st.caption("To use it, choose 'Enter K' and type this value with the unit m.")
+            st.caption(t("kcalc.hint", enter_k=t("form.k_mode_external")))
         elif outcome.issues:
             st.error(
-                "K could not be calculated.\n\n"
+                t("kcalc.failed")
+                + "\n\n"
                 + "\n\n".join(
-                    f"**{GEOMETRY_LABELS[issue.parameter]}:** {issue.message}"
+                    f"**{parameter_label(issue.parameter)}:** "
+                    f"{problem_text(issue.problem, issue.message)}"
                     for issue in outcome.issues
                 )
             )
         else:
-            st.error(f"K could not be calculated: {outcome.error}")
+            error = problem_text(outcome.error_problem, outcome.error or "")
+            st.error(t("kcalc.failed_error", error=error))
 
 
 def render_measurement_controls(results: list[MeasurementResult]) -> None:
@@ -353,21 +342,23 @@ def render_measurement_controls(results: list[MeasurementResult]) -> None:
     remove_column, clear_column, export_column = st.columns(3)
     with remove_column:
         remove_last = st.button(
-            "Remove last measurement",
+            t("session.remove_last"),
             icon=":material/undo:",
             disabled=not results,
             width="stretch",
+            key="remove_last_measurement",
         )
     with clear_column:
         request_clear = st.button(
-            "Clear all measurements",
+            t("session.clear_all"),
             icon=":material/delete:",
             disabled=not results,
             width="stretch",
+            key="clear_all_measurements",
         )
     with export_column:
         st.download_button(
-            "Export CSV",
+            t("session.export"),
             data=measurement_results_to_csv(results, dialect=state.csv_dialect()),
             file_name="georesistivity_measurements.csv",
             mime="text/csv",
@@ -389,20 +380,22 @@ def render_measurement_controls(results: list[MeasurementResult]) -> None:
     if not state.confirm_clear():
         return
 
-    st.warning("Clear every measurement from this session?")
+    st.warning(t("session.clear_question"))
     confirm_column, cancel_column = st.columns(2)
     with confirm_column:
         confirm_clear = st.button(
-            "Confirm clear",
+            t("session.clear_confirm"),
             type="primary",
             icon=":material/delete_forever:",
             width="stretch",
+            key="confirm_clear_measurements",
         )
     with cancel_column:
         cancel_clear = st.button(
-            "Cancel",
+            t("common.cancel"),
             icon=":material/close:",
             width="stretch",
+            key="cancel_clear_measurements",
         )
 
     if confirm_clear:
@@ -418,55 +411,57 @@ def render_measurement_controls(results: list[MeasurementResult]) -> None:
 
 def render_measurements(results: list[MeasurementResult]) -> None:
     """Render the acquisition-order table and its controls."""
-    st.subheader("Session Measurements")
+    st.subheader(t("session.title"))
     if results:
-        st.dataframe(
-            measurement_results_to_dataframe(results),
-            hide_index=True,
-            width="stretch",
-        )
-        st.caption(f"{len(results)} measurement{'s' if len(results) != 1 else ''} in this session.")
+        table = measurement_results_to_dataframe(results)
+        table.columns = [t(f"table.{column}") for column in table.columns]
+        st.dataframe(table, hide_index=True, width="stretch")
+        st.caption(count("session.count", len(results)))
     else:
-        st.info("No measurements have been added yet.")
+        st.info(t("session.empty"))
 
     render_measurement_controls(results)
 
 
 def render_plot(results: list[MeasurementResult]) -> None:
     """Render the optional spacing plot without mutating stored measurements."""
+    tr = translator()
     if sum(result.spacing_ab2_m is not None for result in results) < 2:
         if results:
-            st.info("Add AB/2 to at least two measurements to display the spacing plot.")
+            st.info(t("plot.need_two"))
         return
 
-    st.subheader("Spacing Plot")
+    st.subheader(t("plot.title"))
     option_column, scale_column = st.columns([1, 1])
     with option_column:
-        sort_by_spacing = st.checkbox("Sort by AB/2 for visualization")
+        sort_by_spacing = st.checkbox(t("plot.sort"), key="plot_sort_by_spacing")
     with scale_column:
-        scale_label = st.segmented_control(
-            "Scale",
-            options=("Linear", "Log-log"),
-            default="Linear",
+        scale = st.segmented_control(
+            t("plot.scale"),
+            options=SCALES,
+            format_func=lambda option: tr(SCALE_KEYS[option]),
+            default="linear",
             required=True,
+            key="plot_scale",
         )
 
     points = prepare_plot_points(results, sort_by_spacing=sort_by_spacing)
-    scale: PlotScale = "log-log" if scale_label == "Log-log" else "linear"
-    incompatible = find_log_incompatible_points(points) if scale == "log-log" else ()
+    chosen: PlotScale = "log-log" if scale == "log-log" else "linear"
+    incompatible = find_log_incompatible_points(points) if chosen == "log-log" else ()
     if incompatible:
         rows = ", ".join(f"#{index}" for index in incompatible)
-        st.warning(
-            "Log-log scale requires positive AB/2 and apparent-resistivity values. "
-            f"The following acquisition rows cannot be represented: {rows}. "
-            "No points were removed."
-        )
+        st.warning(t("plot.log_incompatible", rows=rows))
         return
 
-    figure = create_resistivity_figure(points, scale=scale)
+    labels = SpacingFigureLabels(
+        title=t("figure.spacing_title"),
+        x_axis=t("figure.ab2_axis"),
+        y_axis=t("figure.rho_axis"),
+    )
+    figure = create_resistivity_figure(points, scale=chosen, labels=labels)
     st.pyplot(figure, width="stretch")
     if sort_by_spacing:
-        st.caption("The plot is sorted by AB/2; the table remains in acquisition order.")
+        st.caption(t("plot.sorted_caption"))
 
 
 def main() -> None:
@@ -481,15 +476,10 @@ def main() -> None:
     project_slot = render_sidebar()
 
     st.title("GeoResistivity")
-    st.caption("Apparent Resistivity Calculator")
-    st.write(
-        "Calculate and record apparent resistivity from the measured potential difference "
-        "and current, with the geometric factor entered or calculated from the geometry."
-    )
+    st.caption(t("app.subtitle"))
+    st.write(t("app.intro"))
 
-    sheet_tab, single_tab, import_tab = st.tabs(
-        ["Field sheet (VES)", "Single measurement", "Import CSV"]
-    )
+    sheet_tab, single_tab, import_tab = st.tabs([t("tab.sheet"), t("tab.single"), t("tab.import")])
     with sheet_tab:
         render_survey_details()
         render_field_sheet()

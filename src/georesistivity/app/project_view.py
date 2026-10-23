@@ -7,6 +7,7 @@ from pathlib import Path
 import streamlit as st
 
 from georesistivity.app import state
+from georesistivity.app.i18n import count, error_text, t
 from georesistivity.project import Project, project_from_json, project_to_json
 from georesistivity.storage import (
     autosave_dir,
@@ -28,9 +29,10 @@ def _load(project_text: str, source: str) -> None:
         project = project_from_json(project_text)
         state.apply_project(project)
     except ValueError as exc:
-        state.set_project_message(("error", f"Could not open {source}: {exc}"))
+        message = t("project.open_failed", source=source, error=error_text(exc))
+        state.set_project_message(("error", message))
         return
-    state.set_project_message(("success", f"Opened {source}."))
+    state.set_project_message(("success", t("project.opened", source=source)))
 
 
 def open_uploaded_project() -> None:
@@ -41,7 +43,7 @@ def open_uploaded_project() -> None:
     try:
         text = upload.getvalue().decode("utf-8")
     except UnicodeDecodeError:
-        state.set_project_message(("error", f"Could not open {upload.name}: not UTF-8 text."))
+        state.set_project_message(("error", t("project.not_utf8", name=upload.name)))
         return
     _load(text, upload.name)
 
@@ -52,15 +54,15 @@ def restore_autosave(path_text: str) -> None:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        state.set_project_message(("error", f"Could not read the autosave copy: {exc}"))
+        state.set_project_message(("error", t("project.read_failed", error=exc)))
         return
-    _load(text, "the autosave copy")
+    _load(text, t("project.autosave_source"))
 
 
 def autosave(project: Project) -> None:
     """Save ``project`` to this session's autosave copy when it changed."""
     if not autosave_enabled():
-        state.set_autosave_status(("info", "Autosave is off on this installation."))
+        state.set_autosave_status(("info", "autosave.off", {}))
         return
     if not project.has_content():
         return
@@ -71,11 +73,11 @@ def autosave(project: Project) -> None:
     try:
         path = write_autosave(state.session_id(), project)
     except OSError as exc:
-        state.set_autosave_status(("error", f"Autosave failed: {exc}. Save the project file."))
+        state.set_autosave_status(("error", "autosave.failed", {"error": exc}))
         return
     state.set_autosave_digest(digest)
     moment = dt.datetime.now().strftime("%H:%M:%S")
-    state.set_autosave_status(("success", f"Autosaved at {moment} in {path.parent}."))
+    state.set_autosave_status(("success", "autosave.done", {"time": moment, "folder": path.parent}))
 
 
 def _render_recovery(project: Project) -> None:
@@ -84,21 +86,19 @@ def _render_recovery(project: Project) -> None:
     entries = list_autosaves(exclude_session=state.session_id(), limit=RECOVERY_LIMIT)
     if not entries:
         return
-    st.info("Work from an earlier session was autosaved. Restore it to continue.")
+    st.info(t("recovery.info"))
     for entry in entries:
         survey = entry.project.survey
-        count = entry.project.reading_count()
-        title = (
-            survey.name or survey.local or (f"SEV {survey.sev_number}" if survey.sev_number else "")
-        )
+        sev = t("recovery.sev", number=survey.sev_number) if survey.sev_number else ""
+        title = survey.name or survey.local or sev
         details = [
-            title or "Untitled",
-            f"{count} reading{'s' if count != 1 else ''}",
+            title or t("recovery.untitled"),
+            count("count.reading", entry.project.reading_count()),
             entry.saved_at.strftime("%d/%m %H:%M"),
         ]
         st.caption(" · ".join(details))
         st.button(
-            "Restore",
+            t("recovery.restore"),
             key=f"restore_{entry.session_id}",
             icon=":material/restore:",
             on_click=restore_autosave,
@@ -109,7 +109,7 @@ def _render_recovery(project: Project) -> None:
 
 def render_project_controls(project: Project) -> None:
     """Open, save, autosave status, and recovery, for the sidebar."""
-    st.subheader("Project")
+    st.subheader(t("project.title"))
     message = state.project_message()
     if message is not None:
         _show(message)
@@ -117,15 +117,14 @@ def render_project_controls(project: Project) -> None:
     _render_recovery(project)
 
     st.file_uploader(
-        "Open project",
+        t("project.open"),
         type=["json"],
         key=state.OPEN_UPLOAD,
         on_change=open_uploaded_project,
-        help="A .geores.json file saved by GeoResistivity. It replaces the current sheet, "
-        "survey details, and single measurements.",
+        help=t("project.open_help"),
     )
     st.download_button(
-        "Save project",
+        t("project.save"),
         data=project_to_json(project, saved_at=dt.datetime.now().astimezone()),
         file_name=project.suggested_file_name(),
         mime="application/json",
@@ -135,12 +134,16 @@ def render_project_controls(project: Project) -> None:
         key="save_project",
     )
     status = state.autosave_status()
-    if status is not None and status[0] != "success":
-        _show(status)
-    elif status is not None:
-        st.caption(status[1])
-    elif autosave_enabled():
-        st.caption(f"Autosave starts with the first value typed, in {autosave_dir()}.")
+    if status is None:
+        if autosave_enabled():
+            st.caption(t("autosave.pending", folder=autosave_dir()))
+        return
+    kind, key, params = status
+    text = t(key, **params)
+    if kind == "success":
+        st.caption(text)
+    else:
+        _show((kind, text))
 
 
 def render_survey_details() -> None:
@@ -148,57 +151,57 @@ def render_survey_details() -> None:
     # A fixed "expanded" value keeps the panel open while typing; deriving it from the content
     # would collapse it after the first field.
     with st.expander(
-        "Survey details", expanded=state.survey_expanded(), icon=":material/assignment:"
+        t("survey.title"), expanded=state.survey_expanded(), icon=":material/assignment:"
     ):
         name_column, sev_column, date_column = st.columns([3, 1, 2])
         with name_column:
-            st.text_input("Survey name", key=state.META_NAME)
+            st.text_input(t("survey.name"), key=state.META_NAME)
         with sev_column:
-            st.text_input("SEV nº", key=state.META_SEV)
+            st.text_input(t("survey.sev"), key=state.META_SEV)
         with date_column:
-            st.date_input("Date", key=state.META_DATE, format="DD/MM/YYYY")
+            st.date_input(t("survey.date"), key=state.META_DATE, format="DD/MM/YYYY")
 
         area_column, local_column = st.columns(2)
         with area_column:
-            st.text_input("Area", key=state.META_AREA)
+            st.text_input(t("survey.area"), key=state.META_AREA)
         with local_column:
-            st.text_input("Place", key=state.META_LOCAL)
+            st.text_input(t("survey.place"), key=state.META_LOCAL)
 
         operator_column, equipment_column = st.columns(2)
         with operator_column:
-            st.text_input("Operator", key=state.META_OPERATOR)
+            st.text_input(t("survey.operator"), key=state.META_OPERATOR)
         with equipment_column:
-            st.text_input("Equipment", key=state.META_EQUIPMENT)
+            st.text_input(t("survey.equipment"), key=state.META_EQUIPMENT)
 
         azimuth_column, latitude_column, longitude_column = st.columns(3)
         with azimuth_column:
             st.number_input(
-                "Azimuth of AB [°]",
+                t("survey.azimuth"),
                 min_value=0.0,
                 max_value=360.0,
                 step=1.0,
                 format="%.1f",
                 key=state.META_AZIMUTH,
-                help="Direction of the current-electrode line, in degrees from north.",
+                help=t("survey.azimuth_help"),
             )
         with latitude_column:
             st.number_input(
-                "Latitude [°]",
+                t("survey.latitude"),
                 min_value=-90.0,
                 max_value=90.0,
                 step=0.000001,
                 format="%.6f",
                 key=state.META_LATITUDE,
-                help="WGS 84 decimal degrees; negative south of the equator.",
+                help=t("survey.latitude_help"),
             )
         with longitude_column:
             st.number_input(
-                "Longitude [°]",
+                t("survey.longitude"),
                 min_value=-180.0,
                 max_value=180.0,
                 step=0.000001,
                 format="%.6f",
                 key=state.META_LONGITUDE,
-                help="WGS 84 decimal degrees; negative west of Greenwich.",
+                help=t("survey.longitude_help"),
             )
-        st.text_area("Notes", key=state.META_NOTES, height=80)
+        st.text_area(t("survey.notes"), key=state.META_NOTES, height=80)

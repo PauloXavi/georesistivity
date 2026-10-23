@@ -7,7 +7,8 @@ import pandas as pd
 import streamlit as st
 
 from georesistivity.app import state
-from georesistivity.app.common import CURRENT_UNITS, LENGTH_UNITS, VOLTAGE_UNITS, plural
+from georesistivity.app.common import CURRENT_UNITS, LENGTH_UNITS, VOLTAGE_UNITS
+from georesistivity.app.i18n import count, error_text, problem_text, t, t_for
 from georesistivity.core import calculate_measurement
 from georesistivity.csv_import import (
     REQUIRED_FIELDS,
@@ -32,39 +33,24 @@ PREVIEW_ROWS = 10
 NOT_IN_FILE = -1
 AUTO = "auto"
 
-TARGET_LABELS: dict[ImportTarget, str] = {
-    "sheet": "Field sheet (readings by AB/2 and MN)",
-    "measurements": "Single measurements (with K)",
+TARGET_KEYS: dict[ImportTarget, str] = {
+    "sheet": "import.target_sheet",
+    "measurements": "import.target_measurements",
 }
-FIELD_LABELS: dict[ImportField, str] = {
-    "ab2": "AB/2 [m]",
-    "mn": "MN [m]",
-    "delta_v": "ΔV",
-    "current": "I",
-    "voltage_unit": "ΔV unit",
-    "current_unit": "I unit",
-    "marker": "Marker",
-    "excluded": "Excluded",
-    "reason": "Exclusion reason",
-    "geometric_factor": "K",
-    "geometric_factor_unit": "K unit",
-    "spacing_ab2": "AB/2",
-    "spacing_unit": "AB/2 unit",
-    "mn_unit": "MN unit",
-    "source": "K source",
+DELIMITER_KEYS = {
+    AUTO: "import.separator_auto",
+    ";": "import.separator_semicolon",
+    ",": "import.separator_comma",
+    "\t": "import.separator_tab",
 }
-DELIMITER_LABELS = {AUTO: "Detect", ";": "Semicolon ;", ",": "Comma ,", "\t": "Tab"}
-DECIMAL_LABELS = {
-    AUTO: "Detect from the numbers",
-    ".": "Point (1.5)",
-    ",": "Comma (1,5)",
-    "strict": "Undecided: reject values such as 1,000",
+DECIMAL_KEYS = {
+    ".": "import.decimal_point",
+    ",": "import.decimal_comma",
+    "strict": "import.decimal_strict",
 }
+DECIMAL_CHOICES = (AUTO, ".", ",", "strict")
 SheetMode = Literal["replace", "append"]
-MODE_LABELS: dict[SheetMode, str] = {
-    "replace": "Replace the field sheet",
-    "append": "Add after the current rows",
-}
+MODE_KEYS: dict[SheetMode, str] = {"replace": "import.replace", "append": "import.append"}
 NUMERIC_FIELDS: tuple[ImportField, ...] = (
     "ab2",
     "mn",
@@ -73,6 +59,10 @@ NUMERIC_FIELDS: tuple[ImportField, ...] = (
     "geometric_factor",
     "spacing_ab2",
 )
+
+
+def field_label(field_name: ImportField) -> str:
+    return t(f"importfield.{field_name}")
 
 
 def _file_key(name: str, data: bytes) -> str:
@@ -152,7 +142,7 @@ def apply_import() -> None:
         table = _read(file_key, data)
         result = _evaluate(file_key, table)
     except ValueError as exc:
-        state.set_import_message(("error", f"Nothing was imported: {exc}"))
+        state.set_import_message(("error", t("import.nothing", error=error_text(exc))))
         return
 
     if isinstance(result, MeasurementImport):
@@ -160,13 +150,9 @@ def apply_import() -> None:
         state.measurements().extend(results)
         if results:
             state.set_last_result(results[-1])
-        state.set_import_message(
-            (
-                "success",
-                f"Imported {plural(len(results), 'measurement')} from {name} into "
-                "Single measurement.",
-            )
-        )
+        imported = count("count.measurement", len(results))
+        message = t_for(len(results), "import.done_measurements", measurements=imported, name=name)
+        state.set_import_message(("success", message))
         return
 
     mode = st.session_state.get(_key(file_key, "mode"), "replace")
@@ -175,46 +161,56 @@ def apply_import() -> None:
             state.sheet_has_readings()
             and (result.voltage_unit, result.current_unit) != state.sheet_units()
         ):
-            state.set_import_message(
-                ("error", "Nothing was imported: the units differ from the sheet's.")
-            )
+            state.set_import_message(("error", t("import.units_differ")))
             return
         state.append_to_sheet(result.rows)
     else:
         state.replace_sheet(result.rows, result.voltage_unit, result.current_unit)
-    state.set_import_message(
-        (
-            "success",
-            f"Imported {plural(len(result.rows), 'row')} from {name} into the Field sheet tab.",
-        )
-    )
+    imported_rows = count("count.row", len(result.rows))
+    message = t_for(len(result.rows), "import.done_sheet", rows=imported_rows, name=name)
+    state.set_import_message(("success", message))
 
 
 def _issues_table(issues: tuple[ImportIssue, ...]) -> pd.DataFrame:
     return pd.DataFrame(
-        [{"Line": issue.line, "Column": issue.column, "Problem": issue.message} for issue in issues]
+        [
+            {
+                t("import.issue_line"): issue.line,
+                t("import.issue_column"): issue.column,
+                t("import.issue_problem"): problem_text(issue.problem, issue.message),
+            }
+            for issue in issues
+        ]
     )
 
 
 def _render_preview(table: CsvTable) -> None:
     width = len(table.header)
-    names = [f"{index + 1}. {name or '(no name)'}" for index, name in enumerate(table.header)]
+    names = [
+        f"{index + 1}. {name or t('import.no_name')}" for index, name in enumerate(table.header)
+    ]
     rows = [list(row.cells[:width]) + [""] * (width - len(row.cells)) for row in table.rows]
     st.dataframe(pd.DataFrame(rows[:PREVIEW_ROWS], columns=names), hide_index=True, width="stretch")
     if len(table.rows) > PREVIEW_ROWS:
-        st.caption(f"First {PREVIEW_ROWS} of {len(table.rows)} data rows.")
+        st.caption(
+            t(
+                "import.first_rows",
+                shown=PREVIEW_ROWS,
+                rows=count("count.data_row", len(table.rows)),
+            )
+        )
 
 
 def _render_mapping(file_key: str, table: CsvTable, target: ImportTarget) -> None:
     guessed = guess_mapping(table.header, target)
     options = (NOT_IN_FILE, *range(len(table.header)))
 
-    def label(index: int) -> str:
-        return (
-            "— not in the file —" if index == NOT_IN_FILE else f"{index + 1}. {table.header[index]}"
-        )
+    not_in_file = t("import.not_in_file")
 
-    st.markdown("**Columns**")
+    def label(index: int) -> str:
+        return not_in_file if index == NOT_IN_FILE else f"{index + 1}. {table.header[index]}"
+
+    st.markdown(f"**{t('import.columns')}**")
     fields = TARGET_FIELDS[target]
     columns = st.columns(3)
     for position, field_name in enumerate(fields):
@@ -222,7 +218,7 @@ def _render_mapping(file_key: str, table: CsvTable, target: ImportTarget) -> Non
         required = field_name in REQUIRED_FIELDS[target]
         with columns[position % 3]:
             st.selectbox(
-                FIELD_LABELS[field_name] + (" *" if required else ""),
+                field_label(field_name) + (" *" if required else ""),
                 options=options,
                 index=0 if default is None else default + 1,
                 format_func=label,
@@ -236,44 +232,57 @@ def _render_units(
     voltage_unit, current_unit = state.sheet_units()
     needs: list[tuple[str, str, tuple[str, ...], str]] = []
     if mapping.get("voltage_unit") is None:
-        needs.append(("voltage_unit", "ΔV unit", VOLTAGE_UNITS, voltage_unit))
+        needs.append(("voltage_unit", field_label("voltage_unit"), VOLTAGE_UNITS, voltage_unit))
     if mapping.get("current_unit") is None:
-        needs.append(("current_unit", "I unit", CURRENT_UNITS, current_unit))
+        needs.append(("current_unit", field_label("current_unit"), CURRENT_UNITS, current_unit))
     if target == "measurements":
-        needs.append(("length_unit", "Length unit (K, AB/2, MN)", LENGTH_UNITS, "m"))
+        needs.append(("length_unit", t("import.length_unit"), LENGTH_UNITS, "m"))
     if not needs:
         return
-    st.markdown("**Units for columns without a unit column**")
+    st.markdown(f"**{t('import.units')}**")
     for column, (name, title, options, default) in zip(st.columns(len(needs)), needs, strict=True):
         with column:
             st.selectbox(title, options, index=options.index(default), key=_key(file_key, name))
+
+
+def _decimal_labels(detected: DecimalSeparator | None) -> dict[str, str]:
+    labels = {choice: t(key) for choice, key in DECIMAL_KEYS.items()}
+    labels[AUTO] = t("import.decimal_auto", detected=labels[detected or "strict"])
+    return labels
 
 
 def render_import_file(name: str, data: bytes) -> None:
     """Preview, mapping, problems, and the import button for one CSV file."""
     state.set_import_file(name, data)
     file_key = _file_key(name, data)
+    delimiter_labels = {choice: t(key) for choice, key in DELIMITER_KEYS.items()}
+    target_labels = {target: t(key) for target, key in TARGET_KEYS.items()}
+    mode_labels = {mode: t(key) for mode, key in MODE_KEYS.items()}
 
     st.selectbox(
-        "Separator",
-        options=tuple(DELIMITER_LABELS),
-        format_func=DELIMITER_LABELS.__getitem__,
+        t("import.separator"),
+        options=tuple(DELIMITER_KEYS),
+        format_func=delimiter_labels.__getitem__,
         key=_key(file_key, "delimiter"),
     )
     try:
         table = _read(file_key, data)
     except ValueError as exc:
-        st.error(f"The file could not be read: {exc}")
+        st.error(t("import.unreadable", error=error_text(exc)))
         return
-    separator = DELIMITER_LABELS.get(table.delimiter, repr(table.delimiter)).lower()
-    st.caption(f"{name}: {table.encoding}, {separator}, {plural(len(table.rows), 'data row')}.")
+    separator_key = DELIMITER_KEYS.get(table.delimiter)
+    separator = t(separator_key).lower() if separator_key else repr(table.delimiter)
+    rows = count("count.data_row", len(table.rows))
+    st.caption(
+        t("import.read_as", name=name, encoding=table.encoding, separator=separator, rows=rows)
+    )
     _render_preview(table)
 
     st.radio(
-        "Import into",
-        options=tuple(TARGET_LABELS),
-        index=tuple(TARGET_LABELS).index(guess_target(table.header)),
-        format_func=TARGET_LABELS.__getitem__,
+        t("import.target"),
+        options=tuple(TARGET_KEYS),
+        index=tuple(TARGET_KEYS).index(guess_target(table.header)),
+        format_func=target_labels.__getitem__,
         key=_key(file_key, "target"),
         horizontal=True,
     )
@@ -283,42 +292,40 @@ def render_import_file(name: str, data: bytes) -> None:
 
     detected = detect_decimal(table, [mapping.get(field) for field in NUMERIC_FIELDS])
     st.selectbox(
-        "Decimal separator of the file",
-        options=tuple(DECIMAL_LABELS),
-        format_func=lambda choice: (
-            f"Detect from the numbers ({DECIMAL_LABELS.get(detected or 'strict', '')})"
-            if choice == AUTO
-            else DECIMAL_LABELS[choice]
-        ),
+        t("import.decimal"),
+        options=DECIMAL_CHOICES,
+        format_func=_decimal_labels(detected).__getitem__,
         key=_key(file_key, "decimal"),
     )
     _render_units(file_key, target, mapping)
 
     missing = missing_required(target, mapping)
     if missing:
-        st.warning(
-            "Choose a column for: " + ", ".join(FIELD_LABELS[name] for name in missing) + "."
-        )
+        fields = ", ".join(field_label(field_name) for field_name in missing)
+        st.warning(t("import.choose_columns", fields=fields))
         return
 
     result = _evaluate(file_key, table)
     ready = len(result.rows) if isinstance(result, SheetImport) else len(result.measurements)
-    st.markdown(f"**{ready} of {plural(result.total_rows, 'row')} ready to import.**")
+    rows_text = count("count.row", result.total_rows)
+    st.markdown(f"**{t_for(ready, 'import.ready', ready=ready, rows=rows_text)}**")
     if result.issues:
-        st.error(f"{plural(len(result.issues), 'problem')}; these rows will be left out:")
+        st.error(t("import.problems", problems=count("count.problem", len(result.issues))))
         st.dataframe(_issues_table(result.issues), hide_index=True, width="stretch")
 
     if isinstance(result, SheetImport):
-        st.caption(f"ΔV in {result.voltage_unit}, I in {result.current_unit}; lengths in meters.")
+        st.caption(
+            t("import.units_caption", voltage=result.voltage_unit, current=result.current_unit)
+        )
         st.radio(
-            "How",
-            options=tuple(MODE_LABELS),
-            format_func=MODE_LABELS.__getitem__,
+            t("import.how"),
+            options=tuple(MODE_KEYS),
+            format_func=mode_labels.__getitem__,
             key=_key(file_key, "mode"),
             horizontal=True,
         )
     st.button(
-        f"Import {plural(ready, 'row')}",
+        t("import.button", rows=count("count.row", ready)),
         type="primary",
         icon=":material/upload:",
         disabled=ready == 0,
@@ -329,17 +336,13 @@ def render_import_file(name: str, data: bytes) -> None:
 
 def render_import() -> None:
     """Import page."""
-    st.subheader("Import CSV")
-    st.caption(
-        "Import readings into the field sheet or single measurements from a CSV file, "
-        "including the files GeoResistivity exports (standard or Excel pt-BR). Rows with "
-        "problems are listed and left out."
-    )
+    st.subheader(t("import.title"))
+    st.caption(t("import.caption"))
     message = state.import_message()
     if message is not None:
         (st.success if message[0] == "success" else st.error)(message[1])
         state.set_import_message(None)
-    upload = st.file_uploader("CSV file", type=["csv", "txt"], key=state.IMPORT_UPLOAD)
+    upload = st.file_uploader(t("import.file"), type=["csv", "txt"], key=state.IMPORT_UPLOAD)
     if upload is None:
         return
     render_import_file(upload.name, upload.getvalue())

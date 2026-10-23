@@ -15,6 +15,26 @@ PlotScale = Literal["linear", "log-log"]
 
 
 @dataclass(frozen=True, slots=True)
+class SpacingFigureLabels:
+    """Texts of the spacing figure, so interfaces can translate them."""
+
+    title: str = "Apparent Resistivity vs. Electrode Spacing"
+    x_axis: str = "AB/2 [m]"
+    y_axis: str = "Apparent resistivity [\u03a9\u00b7m]"
+
+
+@dataclass(frozen=True, slots=True)
+class SoundingFigureLabels:
+    """Texts of the sounding figure; ``mn_legend`` takes an ``{mn}`` placeholder."""
+
+    title: str = "Vertical Electrical Sounding (Schlumberger)"
+    x_axis: str = "AB/2 [m]"
+    y_axis: str = "Apparent resistivity [\u03a9\u00b7m]"
+    mn_legend: str = "MN = {mn} m"
+    quality_warning: str = "Quality warning"
+
+
+@dataclass(frozen=True, slots=True)
 class PlotPoint:
     """One plottable measurement with its original acquisition index."""
 
@@ -56,6 +76,7 @@ def create_resistivity_figure(
     points: Sequence[PlotPoint],
     *,
     scale: PlotScale = "linear",
+    labels: SpacingFigureLabels | None = None,
 ) -> Figure:
     """Create a readable spacing-versus-apparent-resistivity figure."""
     if len(points) < 2:
@@ -76,9 +97,10 @@ def create_resistivity_figure(
         marker="o",
         linewidth=1.5,
     )
-    axes.set_title("Apparent Resistivity vs. Electrode Spacing")
-    axes.set_xlabel("AB/2 [m]")
-    axes.set_ylabel("Apparent resistivity [\u03a9\u00b7m]")
+    texts = labels or SpacingFigureLabels()
+    axes.set_title(texts.title)
+    axes.set_xlabel(texts.x_axis)
+    axes.set_ylabel(texts.y_axis)
     if scale == "log-log":
         axes.set_xscale("log")
         axes.set_yscale("log")
@@ -122,6 +144,7 @@ def create_sounding_figure(
     points: Sequence[PointResult],
     *,
     number_format: NumberFormat = "pt-BR",
+    labels: SoundingFigureLabels | None = None,
 ) -> Figure:
     """Draw the VES curve on log-log axes with one segment per MN.
 
@@ -134,6 +157,7 @@ def create_sounding_figure(
     if not segments:
         raise ValueError("at least one point with positive apparent resistivity is required")
 
+    texts = labels or SoundingFigureLabels()
     figure = Figure(figsize=(7.0, 7.0), layout="constrained")
     axes = figure.subplots()
     flagged_ab2: list[float] = []
@@ -147,7 +171,7 @@ def create_sounding_figure(
             rho_values,
             marker="o",
             linewidth=1.3,
-            label=f"MN = {label} m",
+            label=texts.mn_legend.format(mn=label),
             clip_on=False,  # AB/2 = 1 m sits on the axis edge, as on bilog paper
         )
         for point, rho_a in zip(segment, rho_values, strict=True):
@@ -162,7 +186,7 @@ def create_sounding_figure(
             facecolors="none",
             edgecolors="tab:red",
             linewidths=1.5,
-            label="Quality warning",
+            label=texts.quality_warning,
             zorder=3,
             clip_on=False,
         )
@@ -178,9 +202,9 @@ def create_sounding_figure(
     axes.set_xlim(*_decade_limits(all_ab2, SOUNDING_MIN_AB2_DECADES))
     axes.set_ylim(*_decade_limits(all_rho, SOUNDING_MIN_RHO_DECADES))
     axes.set_aspect("equal")
-    axes.set_title("Vertical Electrical Sounding (Schlumberger)")
-    axes.set_xlabel("AB/2 [m]")
-    axes.set_ylabel("Apparent resistivity [\u03a9\u00b7m]")
+    axes.set_title(texts.title)
+    axes.set_xlabel(texts.x_axis)
+    axes.set_ylabel(texts.y_axis)
     axes.grid(visible=True, which="both", alpha=0.25, linewidth=0.7)
     axes.legend(loc="best", fontsize="small")
     return figure

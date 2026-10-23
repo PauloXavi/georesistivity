@@ -6,6 +6,7 @@ from typing import Any, Literal, cast
 import streamlit as st
 
 from georesistivity.app.common import CURRENT_UNITS, VOLTAGE_UNITS
+from georesistivity.app.i18n import DEFAULT_LANGUAGE, LANGUAGE_KEY
 from georesistivity.core import calculate_measurement
 from georesistivity.field_sheet import SheetRow, template_rows
 from georesistivity.formatting import NumberFormat
@@ -106,6 +107,7 @@ Notice = tuple[NoticeKind, str]
 
 def initialize() -> None:
     """Create the session entries that are not owned by a widget."""
+    st.session_state.setdefault(LANGUAGE_KEY, DEFAULT_LANGUAGE)
     st.session_state.setdefault(MEASUREMENTS, [])
     st.session_state.setdefault(LAST_RESULT, None)
     st.session_state.setdefault(CONFIRM_CLEAR, False)
@@ -339,12 +341,16 @@ def set_autosave_digest(digest: str) -> None:
 Message = tuple[Literal["success", "info", "warning", "error"], str]
 
 
-def autosave_status() -> Message | None:
-    return cast(Message | None, st.session_state[AUTOSAVE_STATUS])
+Status = tuple[Literal["success", "info", "warning", "error"], str, dict[str, object]]
+"""A message kept across runs as (kind, text key, parameters), shown in the current language."""
 
 
-def set_autosave_status(message: Message) -> None:
-    st.session_state[AUTOSAVE_STATUS] = message
+def autosave_status() -> Status | None:
+    return cast(Status | None, st.session_state[AUTOSAVE_STATUS])
+
+
+def set_autosave_status(status: Status) -> None:
+    st.session_state[AUTOSAVE_STATUS] = status
 
 
 def project_message() -> Message | None:

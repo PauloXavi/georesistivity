@@ -1,5 +1,6 @@
 """Interface tests for the Streamlit application using Streamlit's AppTest."""
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,9 +27,23 @@ from georesistivity.storage import write_autosave
 COMPATIBILITY_SCRIPT = Path(__file__).resolve().parents[1] / "app" / "app.py"
 
 
+def new_app(script: Path = MAIN_SCRIPT, *, language: str = "en") -> AppTest:
+    """An AppTest of the interface. Tests that check English texts use the English interface;
+    the Portuguese default has its own tests."""
+    app_test = AppTest.from_file(str(script), default_timeout=30)
+    app_test.session_state["language"] = language
+    return app_test
+
+
+def new_app_from(script: Callable[[], None], *, language: str = "en") -> AppTest:
+    app_test = AppTest.from_function(script, default_timeout=30)
+    app_test.session_state["language"] = language
+    return app_test
+
+
 @pytest.fixture
 def app() -> AppTest:
-    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test = new_app()
     app_test.run()
     return app_test
 
@@ -190,7 +205,7 @@ def test_spacing_plot_appears_with_two_spaced_measurements(app: AppTest) -> None
 
 
 def test_compatibility_script_runs_the_same_interface() -> None:
-    app_test = AppTest.from_file(str(COMPATIBILITY_SCRIPT), default_timeout=30)
+    app_test = new_app(COMPATIBILITY_SCRIPT)
     app_test.run()
     submit(app_test, delta_v="125", current="35", geometric_factor="625")
 
@@ -267,7 +282,7 @@ def test_k_calculator_reports_invalid_parameters(app: AppTest) -> None:
 
 
 def sheet_app(*rows: SheetRow) -> AppTest:
-    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test = new_app()
     app_test.session_state["sheet_rows"] = list(rows)
     app_test.run()
     return app_test
@@ -466,7 +481,7 @@ def earlier_session_project() -> Project:
 
 def test_work_from_an_earlier_session_can_be_restored(isolated_data_home: Path) -> None:
     write_autosave("earlier", earlier_session_project())
-    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test = new_app()
     app_test.run()
 
     assert any("Work from an earlier session" in str(info.value) for info in app_test.info)
@@ -496,7 +511,7 @@ def test_project_that_cannot_be_shown_leaves_the_session_unchanged(
         sheet_rows=(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),),
     )
     write_autosave("other", unsupported)
-    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test = new_app()
     app_test.run()
 
     app_test.button(key="restore_other").click().run()
@@ -577,7 +592,7 @@ def open_upload_script() -> None:
 
 
 def run_open_upload(name: str, data: bytes | None) -> list[str]:
-    app_test = AppTest.from_function(open_upload_script, default_timeout=30)
+    app_test = new_app_from(open_upload_script)
     if data is not None:
         app_test.session_state["fake_upload"] = (name, data)
     app_test.run()
@@ -619,7 +634,7 @@ def test_no_upload_does_nothing() -> None:
 
 def test_missing_autosave_copy_reports_a_read_error(isolated_data_home: Path) -> None:
     path = write_autosave("gone", earlier_session_project())
-    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test = new_app()
     app_test.run()
     path.unlink()
 
@@ -649,7 +664,7 @@ def test_half_typed_row_waits_instead_of_failing() -> None:
 
 
 def test_survey_details_stay_open_while_typing() -> None:
-    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test = new_app()
     app_test.run()
     app_test.text_input(key="survey_local").set_value("Fazenda").run()
 
@@ -659,7 +674,7 @@ def test_survey_details_stay_open_while_typing() -> None:
 
 def test_restoring_details_collapses_the_survey_panel(isolated_data_home: Path) -> None:
     write_autosave("earlier", earlier_session_project())
-    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test = new_app()
     app_test.run()
 
     app_test.button(key="restore_earlier").click().run()
@@ -687,7 +702,7 @@ def import_script() -> None:
 
 
 def import_app(text: str, *, seed_rows: list[SheetRow] | None = None) -> AppTest:
-    app_test = AppTest.from_function(import_script, default_timeout=30)
+    app_test = new_app_from(import_script)
     app_test.session_state["fake_file"] = ("dados.csv", text.encode("utf-8"))
     if seed_rows is not None:
         app_test.session_state["seed_rows"] = seed_rows
@@ -814,15 +829,6 @@ def test_import_tab_is_part_of_the_interface(app: AppTest) -> None:
     ]
 
 
-def test_plural_helper() -> None:
-    from georesistivity.app.common import plural
-
-    assert plural(1, "row") == "1 row"
-    assert plural(0, "row") == "0 rows"
-    assert plural(2, "data row") == "2 data rows"
-    assert plural(3, "analysis", "analyses") == "3 analyses"
-
-
 def apply_import_script() -> None:
     import streamlit as st
 
@@ -836,14 +842,14 @@ def apply_import_script() -> None:
 
 
 def test_import_callback_without_a_file_does_nothing() -> None:
-    app_test = AppTest.from_function(apply_import_script, default_timeout=30)
+    app_test = new_app_from(apply_import_script)
     app_test.run()
 
     assert markdown_text(app_test) == "None"
 
 
 def test_import_callback_reports_a_file_that_became_unreadable() -> None:
-    app_test = AppTest.from_function(apply_import_script, default_timeout=30)
+    app_test = new_app_from(apply_import_script)
     app_test.session_state["broken"] = b'a,b\n"1,2\n'
     app_test.run()
 
@@ -868,3 +874,120 @@ def test_import_page_shows_the_last_result_once(app: AppTest) -> None:
     assert "Imported 2 rows from x.csv" in "\n".join(str(s.value) for s in app.success)
     app.run()
     assert not any("Imported 2 rows" in str(s.value) for s in app.success)
+
+
+# ---------------------------------------------------------------------------- Portuguese
+
+
+def portuguese_app() -> AppTest:
+    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test.run()
+    assert not app_test.exception
+    return app_test
+
+
+def test_portuguese_is_the_default_language() -> None:
+    app_test = portuguese_app()
+
+    assert app_test.session_state["language"] == "pt-BR"
+    assert [tab.label for tab in app_test.tabs] == [
+        "Folha de campo (SEV)",
+        "Medição avulsa",
+        "Importar CSV",
+    ]
+    assert app_test.selectbox(key="language").value == "pt-BR"
+    assert any(c.value == "Calculadora de Resistividade Aparente" for c in app_test.caption)
+    assert app_test.text_input(key="survey_local").label == "Local"
+    assert any("Digite ΔV e I em uma linha" in str(info.value) for info in app_test.info)
+
+
+def test_single_measurement_in_portuguese() -> None:
+    app_test = portuguese_app()
+
+    submit(app_test, delta_v="125", current="35", geometric_factor="1,000")
+    errors = error_text(app_test)
+    assert errors.startswith("A medição não foi adicionada.")
+    assert "**Fator geométrico K:** valor ambíguo '1,000': ',' pode ser separador" in errors
+    assert "Digite 1000 para o número inteiro, ou 1,0000 para o valor decimal" in errors
+
+    submit(app_test, delta_v="125", current="35", geometric_factor="625")
+    assert [s.value for s in app_test.success] == ["Medição nº 1 adicionada."]
+    assert app_test.metric[0].label == "Resistividade aparente"
+    assert app_test.metric[0].value == "2.232 \u03a9\u00b7m"
+    table = next(frame.value for frame in app_test.dataframe if frame.key is None)
+    assert "Origem do K" in table.columns
+    assert any(str(c.value) == "1 medição nesta sessão." for c in app_test.caption)
+
+
+def test_core_errors_are_translated_by_code() -> None:
+    app_test = portuguese_app()
+    app_test.radio(key="geometric_factor_mode").set_value("schlumberger").run()
+    app_test.text_input(key="delta_v_raw").set_value("125")
+    app_test.text_input(key="current_raw").set_value("0")
+    app_test.text_input(key="spacing_raw").set_value("1")
+    app_test.text_input(key="mn_raw").set_value("3")
+    app_test.button(key="submit_measurement").click().run()
+
+    assert "**MN:** MN/2 precisa ser menor que AB/2" in error_text(app_test)
+
+
+def test_field_sheet_in_portuguese() -> None:
+    app_test = AppTest.from_file(str(MAIN_SCRIPT), default_timeout=30)
+    app_test.session_state["sheet_rows"] = [
+        SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),
+        SheetRow(ab2="1,3", mn="0,5", delta_v="abc", current="40"),
+        SheetRow(ab2="1,8", mn="0,5", delta_v="80"),
+    ]
+    app_test.run()
+
+    assert "**Linha 2** — ΔV: valor numérico inválido: 'abc'" in error_text(app_test)
+    captions = [str(c.value) for c in app_test.caption]
+    assert "Aguardando valor em linha 3 (I)." in captions
+    assert "1 posição medida em 1 espaçamento AB/2." in captions
+    table = next(frame.value for frame in app_test.dataframe if frame.key is None)
+    assert list(table.columns) == [
+        "AB/2 [m]",
+        "MN [m]",
+        "Cor",
+        "K [m]",
+        "Leituras",
+        "\u03c1a [\u03a9\u00b7m]",
+        "CV [%]",
+        "Avisos",
+    ]
+
+
+def test_language_can_be_switched_to_english() -> None:
+    app_test = portuguese_app()
+
+    app_test.selectbox(key="language").set_value("en").run()
+
+    assert [tab.label for tab in app_test.tabs] == [
+        "Field sheet (VES)",
+        "Single measurement",
+        "Import CSV",
+    ]
+    assert app_test.text_input(key="survey_local").label == "Place"
+
+
+def test_opening_a_bad_project_reports_in_portuguese() -> None:
+    app_test = new_app_from(open_upload_script, language="pt-BR")
+    app_test.session_state["fake_upload"] = ("x.json", b"{}")
+    app_test.run()
+
+    message = markdown_text(app_test)
+    assert "Não foi possível abrir x.json: schema: não é um projeto do GeoResistivity" in message
+
+
+def test_import_page_in_portuguese() -> None:
+    app_test = new_app_from(import_script, language="pt-BR")
+    app_test.session_state["fake_file"] = ("dados.csv", SHEET_CSV.encode("utf-8"))
+    app_test.run()
+
+    assert "2 de 3 linhas prontas para importar." in markdown_text(app_test)
+    issues = app_test.dataframe[1].value
+    assert issues.to_dict("records") == [
+        {"Linha": 4, "Coluna": "ΔV", "Problema": "valor numérico inválido: 'abc'"}
+    ]
+    next(b for b in app_test.button if b.label == "Importar 2 linhas").click().run()
+    assert "2 linhas de dados.csv importadas para a aba Folha de campo." in markdown_text(app_test)

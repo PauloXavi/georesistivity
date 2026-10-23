@@ -6,36 +6,34 @@ import pandas as pd
 import streamlit as st
 
 from georesistivity.app import state
-from georesistivity.app.common import (
-    CURRENT_UNITS,
-    OHM_METER,
-    VOLTAGE_UNITS,
-    WARNING_SHORT_LABELS,
-)
+from georesistivity.app.common import CURRENT_UNITS, VOLTAGE_UNITS, warning_short
+from georesistivity.app.i18n import count, error_text, problem_text, t, t_for
 from georesistivity.field_sheet import SheetColumn, SheetOutcome, SheetRow, evaluate_sheet
 from georesistivity.formatting import NumberFormat, format_full_precision, format_significant
 from georesistivity.io import sounding_points_to_csv, sounding_readings_to_csv
-from georesistivity.plotting import create_sounding_figure, find_unplottable_sounding_points
+from georesistivity.plotting import (
+    SoundingFigureLabels,
+    create_sounding_figure,
+    find_unplottable_sounding_points,
+)
 from georesistivity.project import SheetTemplate
 from georesistivity.storage import list_templates, save_template
 from georesistivity.survey import PointResult
 
+# Column names of the editor table. They identify the data and do not change with the
+# language; the headers on screen come from the column configuration.
 MARKER = "Marker"
 AB2 = "AB/2 [m]"
 MN = "MN [m]"
-DELTA_V = "\u0394V"
+DELTA_V = "ΔV"
 CURRENT = "I"
 EXCLUDED = "Exclude"
 REASON = "Exclusion reason"
 EDITOR_COLUMNS = (MARKER, AB2, MN, DELTA_V, CURRENT, EXCLUDED, REASON)
 
-COLUMN_LABELS: dict[SheetColumn, str] = {
-    "ab2": "AB/2",
-    "mn": "MN",
-    "delta_v": DELTA_V,
-    "current": CURRENT,
-    "reason": REASON,
-}
+
+def column_label(column: SheetColumn) -> str:
+    return t(f"sheet.issue_{column}")
 
 
 def rows_to_dataframe(rows: list[SheetRow]) -> pd.DataFrame:
@@ -94,16 +92,19 @@ def _points_table(points: tuple[PointResult, ...], number_format: NumberFormat) 
         variation = None if statistics is None else statistics.coefficient_of_variation
         excluded = sum(reading.reading.excluded for reading in result.readings)
         used = 0 if statistics is None else statistics.count
+        readings = (
+            t("points.readings_excluded", used=used, excluded=excluded) if excluded else str(used)
+        )
         records.append(
             {
-                AB2: full(result.point.ab2_m),
-                MN: full(result.point.mn_m),
-                MARKER: result.point.marker or "",
-                "K [m]": significant(result.geometric_factor_m),
-                "Readings": f"{used}" + (f" (+{excluded} excluded)" if excluded else ""),
-                f"\u03c1a [{OHM_METER}]": significant(result.apparent_resistivity_ohm_m),
-                "CV [%]": "" if variation is None else significant(100.0 * variation),
-                "Warnings": ", ".join(WARNING_SHORT_LABELS[w] for w in result.warnings),
+                t("points.ab2"): full(result.point.ab2_m),
+                t("points.mn"): full(result.point.mn_m),
+                t("points.marker"): result.point.marker or "",
+                t("points.k"): significant(result.geometric_factor_m),
+                t("points.readings"): readings,
+                t("points.rho"): significant(result.apparent_resistivity_ohm_m),
+                t("points.cv"): "" if variation is None else significant(100.0 * variation),
+                t("points.warnings"): ", ".join(warning_short(w) for w in result.warnings),
             }
         )
     return pd.DataFrame(records)
@@ -112,53 +113,64 @@ def _points_table(points: tuple[PointResult, ...], number_format: NumberFormat) 
 def _render_settings() -> None:
     voltage_column, current_column, limit_column = st.columns(3)
     with voltage_column:
-        st.selectbox("\u0394V unit", VOLTAGE_UNITS, key=state.SHEET_VOLTAGE_UNIT)
+        st.selectbox(t("sheet.dv_unit"), VOLTAGE_UNITS, key=state.SHEET_VOLTAGE_UNIT)
     with current_column:
-        st.selectbox("I unit", CURRENT_UNITS, key=state.SHEET_CURRENT_UNIT)
+        st.selectbox(t("sheet.i_unit"), CURRENT_UNITS, key=state.SHEET_CURRENT_UNIT)
     with limit_column:
         st.number_input(
-            "CV limit [%]",
+            t("sheet.cv_limit"),
             min_value=state.CV_LIMIT_RANGE[0],
             max_value=state.CV_LIMIT_RANGE[1],
             step=0.5,
             key=state.SHEET_CV_LIMIT,
-            help="Repeated readings of one position whose coefficient of variation exceeds "
-            "this limit are flagged.",
+            help=t("sheet.cv_help"),
         )
 
 
 def _render_issues(outcome: SheetOutcome) -> None:
     if outcome.incomplete_rows:
         waiting = ", ".join(
-            f"row {number} ({COLUMN_LABELS[status.issues[0].column]})"
+            t("sheet.waiting_row", number=number, column=column_label(status.issues[0].column))
             for number, status in outcome.incomplete_rows
         )
-        st.caption(f"Waiting for a value in {waiting}.")
+        st.caption(t("sheet.waiting", rows=waiting))
     if not outcome.invalid_rows:
         return
     lines = []
     for number, status in outcome.invalid_rows:
         details = "; ".join(
-            f"{COLUMN_LABELS[issue.column]}: {issue.message}" for issue in status.issues
+            f"{column_label(issue.column)}: {problem_text(issue.problem, issue.message)}"
+            for issue in status.issues
         )
-        lines.append(f"**Row {number}** — {details}")
-    st.error("These rows were not used:\n\n" + "\n\n".join(lines))
+        lines.append(t("sheet.row_issue", number=number, details=details))
+    st.error(t("sheet.not_used") + "\n\n" + "\n\n".join(lines))
 
 
 def _render_curve(points: tuple[PointResult, ...], number_format: NumberFormat) -> None:
     unplottable = find_unplottable_sounding_points(points)
     if unplottable:
         positions = ", ".join(
-            f"AB/2 = {format_full_precision(p.point.ab2_m, number_format=number_format)} m "
-            f"(MN = {format_full_precision(p.point.mn_m, number_format=number_format)} m)"
+            t(
+                "sheet.position",
+                ab2=format_full_precision(p.point.ab2_m, number_format=number_format),
+                mn=format_full_precision(p.point.mn_m, number_format=number_format),
+            )
             for p in unplottable
         )
-        st.warning(f"Not on the log-log curve because \u03c1a is not positive: {positions}.")
+        st.warning(t("sheet.not_on_curve", positions=positions))
     if len(unplottable) == sum(p.apparent_resistivity_ohm_m is not None for p in points):
         return
+    labels = SoundingFigureLabels(
+        title=t("figure.sounding_title"),
+        x_axis=t("figure.ab2_axis"),
+        y_axis=t("figure.rho_axis"),
+        mn_legend=t("figure.mn_legend", mn="{mn}"),
+        quality_warning=t("figure.quality_warning"),
+    )
+    figure = create_sounding_figure(points, number_format=number_format, labels=labels)
     # A square bilog curve at full page width would be taller than the screen; 560 px still
     # shrinks to the container on phones.
-    st.pyplot(create_sounding_figure(points, number_format=number_format), width=560)
+    st.pyplot(figure, width=560)
 
 
 def _render_exports(points: tuple[PointResult, ...]) -> None:
@@ -166,7 +178,7 @@ def _render_exports(points: tuple[PointResult, ...]) -> None:
     points_column, readings_column = st.columns(2)
     with points_column:
         st.download_button(
-            "Export points (CSV)",
+            t("sheet.export_points"),
             data=sounding_points_to_csv(points, dialect=dialect),
             file_name="georesistivity_ves_points.csv",
             mime="text/csv",
@@ -176,7 +188,7 @@ def _render_exports(points: tuple[PointResult, ...]) -> None:
         )
     with readings_column:
         st.download_button(
-            "Export readings (CSV)",
+            t("sheet.export_readings"),
             data=sounding_readings_to_csv(points, dialect=dialect),
             file_name="georesistivity_ves_readings.csv",
             mime="text/csv",
@@ -197,55 +209,58 @@ def save_layout_as_template() -> None:
         )
         path = save_template(template)
     except (ValueError, OSError) as exc:
-        state.set_template_message(("error", f"The template was not saved: {exc}"))
+        state.set_template_message(("error", t("templates.not_saved", error=error_of(exc))))
         return
-    state.set_template_message(("success", f"Template '{template.name}' saved in {path.parent}."))
+    state.set_template_message(
+        ("success", t("templates.saved", name=template.name, folder=path.parent))
+    )
 
 
-def _layout_label(choice: str) -> str:
-    return "Standard field sheet (45 positions)" if choice == STANDARD_LAYOUT else choice
+def error_of(error: BaseException) -> str:
+    """An error in the current language; operating-system errors keep their own text."""
+    return str(error) if isinstance(error, OSError) else error_text(error)
 
 
 def _render_layout_tools() -> None:
     templates = {template.name: template for template in list_templates()}
-    with st.expander("New sheet and templates", icon=":material/note_add:"):
+    standard = t("templates.standard")
+
+    def _layout_label(choice: str) -> str:
+        return standard if choice == STANDARD_LAYOUT else choice
+
+    with st.expander(t("templates.title"), icon=":material/note_add:"):
         st.selectbox(
-            "Layout for a new sheet",
+            t("templates.layout"),
             options=(STANDARD_LAYOUT, *templates),
             format_func=_layout_label,
             key=state.TEMPLATE_CHOICE,
         )
         if not state.sheet_confirm_new():
-            if st.button("New sheet", icon=":material/note_add:", key="sheet_new"):
+            if st.button(t("templates.new"), icon=":material/note_add:", key="sheet_new"):
                 state.set_sheet_confirm_new(True)
                 st.rerun()
         else:
-            st.warning("Start a new sheet? Every value typed in this sheet will be discarded.")
+            st.warning(t("templates.new_question"))
             confirm_column, cancel_column = st.columns(2)
             with confirm_column:
-                if st.button(
-                    "Discard and start new sheet", type="primary", key="sheet_new_confirm"
-                ):
+                if st.button(t("templates.new_confirm"), type="primary", key="sheet_new_confirm"):
                     choice = st.session_state[state.TEMPLATE_CHOICE]
                     template = templates.get(choice)
                     state.reset_sheet(None if template is None else template.sheet_rows())
                     st.rerun()
             with cancel_column:
-                if st.button("Cancel", key="sheet_new_cancel"):
+                if st.button(t("common.cancel"), key="sheet_new_cancel"):
                     state.set_sheet_confirm_new(False)
                     st.rerun()
 
         st.divider()
-        st.caption(
-            "Save the AB/2, MN, and marker colours of this sheet as a template, without "
-            "readings, to start new sheets with them."
-        )
+        st.caption(t("templates.caption"))
         name_column, save_column = st.columns([3, 1], vertical_alignment="bottom")
         with name_column:
-            st.text_input("Template name", key=state.TEMPLATE_NAME)
+            st.text_input(t("templates.name"), key=state.TEMPLATE_NAME)
         with save_column:
             st.button(
-                "Save template",
+                t("templates.save"),
                 key="save_template",
                 on_click=save_layout_as_template,
                 width="stretch",
@@ -258,14 +273,8 @@ def _render_layout_tools() -> None:
 
 def render_field_sheet() -> None:
     """Render the digital Schlumberger field sheet, its results, and its curve."""
-    st.subheader("Schlumberger field sheet")
-    st.caption(
-        "Type \u0394V and I in the rows you read; blank rows are ignored. A second row with the "
-        "same AB/2 and the next MN is an overlap reading. Add a row with the same AB/2 and MN "
-        "to record a repeated reading. K uses the exact formula with MN as the full M-N "
-        "spacing. The sheet is autosaved on this computer; use Save project in the sidebar "
-        "to keep a file."
-    )
+    st.subheader(t("sheet.title"))
+    st.caption(t("sheet.caption"))
     _render_settings()
 
     voltage_unit, current_unit = state.sheet_units()
@@ -278,14 +287,18 @@ def render_field_sheet() -> None:
         width="stretch",
         column_config={
             MARKER: st.column_config.TextColumn(
-                MARKER, help="Cable or reel marker colour of this AB/2", width="small"
+                t("sheet.col_marker"), help=t("sheet.col_marker_help"), width="small"
             ),
-            AB2: st.column_config.TextColumn(AB2, width="small"),
-            MN: st.column_config.TextColumn(MN, help="Full M-N spacing", width="small"),
-            DELTA_V: st.column_config.TextColumn(f"{DELTA_V} [{voltage_unit}]"),
-            CURRENT: st.column_config.TextColumn(f"{CURRENT} [{current_unit}]"),
-            EXCLUDED: st.column_config.CheckboxColumn(EXCLUDED, default=False, width="small"),
-            REASON: st.column_config.TextColumn(REASON),
+            AB2: st.column_config.TextColumn(t("sheet.col_ab2"), width="small"),
+            MN: st.column_config.TextColumn(
+                t("sheet.col_mn"), help=t("sheet.col_mn_help"), width="small"
+            ),
+            DELTA_V: st.column_config.TextColumn(t("sheet.col_delta_v", unit=voltage_unit)),
+            CURRENT: st.column_config.TextColumn(t("sheet.col_current", unit=current_unit)),
+            EXCLUDED: st.column_config.CheckboxColumn(
+                t("sheet.col_exclude"), default=False, width="small"
+            ),
+            REASON: st.column_config.TextColumn(t("sheet.col_reason")),
         },
     )
 
@@ -302,12 +315,16 @@ def render_field_sheet() -> None:
 
     points = outcome.points
     if not points:
-        st.info("Type \u0394V and I in a row to see the result and the curve.")
+        st.info(t("sheet.empty"))
     else:
         spacings = len({p.point.ab2_m for p in points})
         st.caption(
-            f"{len(points)} position{'s' if len(points) != 1 else ''} read at {spacings} "
-            f"AB/2 spacing{'s' if spacings != 1 else ''}."
+            t_for(
+                len(points),
+                "sheet.summary",
+                positions=count("count.position", len(points)),
+                spacings=count("count.spacing", spacings),
+            )
         )
         st.dataframe(_points_table(points, number_format), hide_index=True, width="stretch")
         _render_curve(points, number_format)
