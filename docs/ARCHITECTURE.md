@@ -472,7 +472,8 @@ Depois da P1 (sem começar sem a sua aprovação):
 
 ## 15. Proposta da P2
 
-**Status:** proposta em 2026-10-22, aguardando aprovação. Nenhum código da P2 foi escrito.
+**Status:** aprovada em 2026-10-22: ordem M7 → M10 e decisões D-10 a D-14. A D-15 será
+respondida antes do M8.
 
 ### 15.1 Ponto de partida
 
@@ -512,14 +513,14 @@ dado digitado já nasce com histórico; o custo é adiar as entregas visuais.
 
 ### 15.3 Decisões
 
-| ID | Decisão | Recomendação |
+| ID | Decisão | Recomendação e status |
 | --- | --- | --- |
-| D-10 | O que a barra de erro representa | **±1 erro-padrão da média** (`K · s / √n`), como previsto na seção 7.2, só com n ≥ 2. Alternativas: intervalo de 95% com t de Student (com n = 2 a barra é 12,7 vezes o erro-padrão e domina a curva) ou ±1 desvio-padrão (mostra a dispersão das leituras, não a incerteza do ρa). |
-| D-11 | Idioma do relatório | **O idioma da interface no momento da geração** (PT-BR por padrão), com números no formato escolhido. É uma exceção à regra "arquivos em inglês", porque o relatório é lido por pessoas; CSV e projeto continuam em inglês. |
-| D-12 | Como gerar o PDF | **Sem dependência nova:** HTML autocontido e PDF desenhado com o matplotlib, que já é dependência. O WeasyPrint exige bibliotecas do sistema (Pango), difíceis de instalar no Windows; o ReportLab seria mais uma dependência para manter. |
-| D-13 | Política do histórico | **Registro automático, sem exigir motivo:** toda alteração de valor já digitado, toda linha apagada e toda troca da folha entram no histórico com horário; digitar numa célula vazia não conta como alteração. A exclusão continua exigindo motivo. Alternativa mais rígida, no estilo das boas práticas de laboratório: exigir motivo para corrigir uma leitura completa. É mais rastreável, mas atrapalha a digitação em campo. |
-| D-14 | Horário da leitura | **Automático:** o momento em que ΔV e I da linha ficaram completos, gravado como "digitado em". Quando a folha é passada a limpo no escritório, esse é o horário da digitação, não o da medição, e o relatório diz isso. Como a folha de papel não tem coluna de hora, não proponho hora digitada à mão. |
-| D-15 | Escala do papel bilog | Preciso do **módulo do papel que você usa** (tamanho de uma década, em mm) para usar como padrão na exportação em escala. O valor fica configurável. |
+| D-10 | O que a barra de erro representa | **±1 erro-padrão da média** (`K · s / √n`), como previsto na seção 7.2, só com n ≥ 2. Alternativas: intervalo de 95% com t de Student (com n = 2 a barra é 12,7 vezes o erro-padrão e domina a curva) ou ±1 desvio-padrão (mostra a dispersão das leituras, não a incerteza do ρa). **Aprovada.** |
+| D-11 | Idioma do relatório | **O idioma da interface no momento da geração** (PT-BR por padrão), com números no formato escolhido. É uma exceção à regra "arquivos em inglês", porque o relatório é lido por pessoas; CSV e projeto continuam em inglês. **Aprovada.** |
+| D-12 | Como gerar o PDF | **Sem dependência nova:** HTML autocontido e PDF desenhado com o matplotlib, que já é dependência. O WeasyPrint exige bibliotecas do sistema (Pango), difíceis de instalar no Windows; o ReportLab seria mais uma dependência para manter. **Aprovada.** |
+| D-13 | Política do histórico | **Registro automático, sem exigir motivo:** toda alteração de valor já digitado, toda linha apagada e toda troca da folha entram no histórico com horário; digitar numa célula vazia não conta como alteração. A exclusão continua exigindo motivo. Alternativa mais rígida, no estilo das boas práticas de laboratório: exigir motivo para corrigir uma leitura completa. É mais rastreável, mas atrapalha a digitação em campo. **Aprovada.** |
+| D-14 | Horário da leitura | **Automático:** o momento em que ΔV e I da linha ficaram completos, gravado como "digitado em". Quando a folha é passada a limpo no escritório, esse é o horário da digitação, não o da medição, e o relatório diz isso. Como a folha de papel não tem coluna de hora, não proponho hora digitada à mão. **Aprovada.** |
+| D-15 | Escala do papel bilog | Preciso do **módulo do papel que você usa** (tamanho de uma década, em mm) para usar como padrão na exportação em escala. O valor fica configurável. **Pendente** (antes do M8). |
 
 ### 15.4 Notas técnicas
 
