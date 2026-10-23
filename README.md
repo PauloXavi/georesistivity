@@ -257,7 +257,16 @@ The **Field sheet (VES)** tab is a digital version of the paper Schlumberger sou
 - **Export points (CSV)** gives one row per position with its statistics; **Export readings
   (CSV)** gives every reading, including excluded ones and their reasons, and the time it was
   entered.
-- **Change history**, below the exports, records every correction of a value that was already
+- **VES report**, below the exports, downloads the report of the sheet as an A4 PDF or as one
+  self-contained HTML page (it opens without internet and prints well): survey and
+  acquisition details, a summary, the curve with its error bars, the positions, every reading
+  with its exclusion reason and entered-at time, the rows of the sheet that were not used and
+  why, the quality warnings, the change history, and the methods with their formulas and
+  references. It is written in the interface language and number format, and its footer
+  carries the program version, the time it was generated, and the SHA-256 of the project
+  content, so two reports of the same data can be matched. Everything typed is escaped in
+  the HTML, so a project cannot inject code into its report.
+- **Change history**, below the report, records every correction of a value that was already
   typed (before and after), every deleted row, every replacement of the sheet (import, new
   sheet, template), rows added by an import, and every change of the ΔV or I unit, each with
   its time. Typing into an empty cell is data entry and is not recorded, and exclusions still
@@ -458,6 +467,7 @@ wrote SEV-01-Fazenda-ves-curve.pdf (pdf, 36 positions, plot area 187.5 x 250 mm 
 | `georesistivity k ARRAY ...` | K for `schlumberger`, `wenner`, `dipole-dipole`, `pole-dipole`, or `general`. |
 | `georesistivity k table` | Schlumberger K table by AB/2 and MN; defaults to the standard field-sheet spacings. |
 | `georesistivity calc ...` | $\rho_a$ for one reading, with `--k` or with `--ab2` and `--mn`. |
+| `georesistivity report PROJECT` | The report of a project file as PDF (default) or HTML (`-o report.html`), with `--language en` for English. |
 | `georesistivity plot PROJECT` | The VES curve of a project file as PDF, SVG (`-o curve.svg`), or PNG; `--decade-mm [MM]` draws it to bilog paper scale, and `--language en` writes the figure texts in English. |
 
 Every length or electrical value takes its unit (`20m`, `2000cm`, `125mV`); write negative
@@ -522,6 +532,7 @@ GeoResistivity/
 │   ├── models.py
 │   ├── plotting.py
 │   ├── project.py
+│   ├── report.py
 │   ├── services.py
 │   ├── sheet_history.py
 │   ├── stacking.py
@@ -550,6 +561,7 @@ GeoResistivity/
 | `src/georesistivity/storage.py` | Local autosave copies and templates, written atomically. |
 | `src/georesistivity/messages.py` | Message codes of the scientific core, with English text. |
 | `src/georesistivity/i18n/` | Texts in Brazilian Portuguese and English, shared by the interface and the command line. |
+| `src/georesistivity/report.py` | The VES report: content gathered once, laid out as HTML or as an A4 PDF. |
 | `src/georesistivity/figures.py` | VES curve files (PNG, SVG, PDF), to scale or at standard size, with titles in either language. |
 | `src/georesistivity/csv_import.py` | CSV reading, column mapping, and row validation for import. |
 | `src/georesistivity/spreadsheet.py` | Protection of CSV text against formula injection, and its inverse. |

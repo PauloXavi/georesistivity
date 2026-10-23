@@ -44,8 +44,20 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
   helpers) and `Project.history`.
 - A synthetic version 1 project file in the tests, to keep older files opening.
 
+- **VES report** (M10, decisions D-11 and D-12): an A4 PDF drawn with Matplotlib or one
+  self-contained HTML page, in the interface language, with survey details, summary, curve,
+  positions, readings with exclusions and entered-at times, rows not used and why, quality
+  warnings, change history, methods, references, and a footer with the program version, the
+  generation time, and the SHA-256 of the project content. Typed text is escaped in HTML.
+  Download from the field sheet, or `georesistivity report PROJECT` with `-o`, `--format`,
+  `--language`, `--number-format`, and `--no-error-bars`.
+- `georesistivity.report` (`build_report`, `render_html`, `render_pdf`, `report_file`,
+  `describe_change`, `history_time`, `project_digest`), `plotting.draw_sounding_curve`, and
+  `i18n.count_in` / `i18n.text_for`.
+
 ### Changed
 
+- The English label of the VES number is "VES no." (it was "SEV nº").
 - **Project files are now schema version 2**: rows store `id` and `entered_at`, and the
   project stores `history`. Version 1 files are migrated when opened (new row ids, empty
   history); files written by this version cannot be opened by 0.3.0.

@@ -596,6 +596,20 @@ cerca de 5 ms, então o histórico fica no próprio projeto. Não conferido no n
 colunas e colar várias linhas no editor; se alguma dessas operações perder o identificador, o
 alinhamento por conteúdo assume, como nas linhas acrescentadas.
 
+**Andamento:** M10 concluído em 2026-10-23, e com ele a **P2**: relatório em PDF A4 (desenhado
+com o Matplotlib, com paginação própria que repete o cabeçalho das tabelas) e em HTML
+autocontido (figura SVG embutida, estilo para impressão, sempre claro), montado uma única vez
+em `report.py` e desenhado nos dois formatos, no idioma da tela (D-11) e sem dependência nova
+(D-12). Conteúdo: cabeçalho da folha e da aquisição, resumo, curva com barras, posições,
+leituras com exclusões, motivos e horário, linhas da folha não usadas e por quê, avisos,
+histórico, métodos com fórmulas e referências, e rodapé com versão, data de geração e SHA-256
+do conteúdo do projeto. O SHA-256 é o do JSON canônico do projeto, sem a data de gravação, e
+não o dos bytes de um arquivo salvo, para que a tela e a linha de comando deem a mesma impressão
+digital para o mesmo conteúdo. Todo texto digitado é escapado no HTML (testado com um local
+contendo `<script>`). Comando `georesistivity report`. Limites: no PDF, a quebra de texto nas
+células usa uma largura média de caractere, então textos muito largos podem encostar na coluna
+vizinha; a D-15 (módulo do papel bilog) continua pendente.
+
 ---
 
 ## 16. Riscos
