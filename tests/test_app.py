@@ -374,6 +374,41 @@ def test_field_sheet_without_positive_points_draws_no_curve() -> None:
     assert app_test.get("image") == []
 
 
+def test_field_sheet_shows_error_bars_where_readings_repeat() -> None:
+    app_test = sheet_app(
+        SheetRow(ab2="10", mn="2", delta_v="30", current="50"),
+        SheetRow(ab2="10", mn="2", delta_v="34", current="50"),
+        SheetRow(ab2="13", mn="2", delta_v="20", current="50"),
+    )
+
+    assert not app_test.exception
+    assert app_test.toggle(key="sheet_error_bars").value is True
+    assert app_test.toggle(key="sheet_error_bars").label == "Error bars (\u00b11 standard error)"
+    captions = [str(c.value) for c in app_test.caption]
+    assert (
+        "Error bar on 1 of 2 positions on the curve (only where there are two or more valid "
+        "readings)." in captions
+    )
+    # 1.98 pi = 6.220 ohm.m; the position with one reading has no standard error.
+    assert points_table(app_test)["\u03c1a standard error [\u03a9\u00b7m]"].tolist() == [
+        "6,220",
+        "",
+    ]
+
+    app_test.toggle(key="sheet_error_bars").set_value(False).run()
+
+    assert not any("Error bar" in str(c.value) for c in app_test.caption)
+    assert len(app_test.get("image")) == 1
+
+
+def test_field_sheet_explains_a_curve_without_error_bars() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+
+    assert "No position has two or more valid readings, so the curve has no error bars." in [
+        str(c.value) for c in app_test.caption
+    ]
+
+
 def test_new_sheet_requires_confirmation() -> None:
     app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
 
@@ -944,6 +979,13 @@ def test_field_sheet_in_portuguese() -> None:
     captions = [str(c.value) for c in app_test.caption]
     assert "Aguardando valor em linha 3 (I)." in captions
     assert "1 posição medida em 1 espaçamento AB/2." in captions
+    assert (
+        "Nenhuma posi\u00e7\u00e3o tem duas ou mais leituras v\u00e1lidas, ent\u00e3o a curva "
+        "n\u00e3o tem barras de erro." in captions
+    )
+    assert (
+        app_test.toggle(key="sheet_error_bars").label == "Barras de erro (\u00b11 erro-padr\u00e3o)"
+    )
     table = next(frame.value for frame in app_test.dataframe if frame.key is None)
     assert list(table.columns) == [
         "AB/2 [m]",
@@ -952,6 +994,7 @@ def test_field_sheet_in_portuguese() -> None:
         "K [m]",
         "Leituras",
         "\u03c1a [\u03a9\u00b7m]",
+        "Erro-padr\u00e3o \u03c1a [\u03a9\u00b7m]",
         "CV [%]",
         "Avisos",
     ]

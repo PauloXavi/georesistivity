@@ -15,6 +15,7 @@ from georesistivity.plotting import (
     SoundingFigureLabels,
     create_sounding_figure,
     find_unplottable_sounding_points,
+    sounding_error_bar,
 )
 from georesistivity.project import SheetTemplate
 from georesistivity.storage import list_templates, save_template
@@ -103,6 +104,7 @@ def _points_table(points: tuple[PointResult, ...], number_format: NumberFormat) 
                 t("points.k"): significant(result.geometric_factor_m),
                 t("points.readings"): readings,
                 t("points.rho"): significant(result.apparent_resistivity_ohm_m),
+                t("points.se"): significant(result.standard_error_ohm_m),
                 t("points.cv"): "" if variation is None else significant(100.0 * variation),
                 t("points.warnings"): ", ".join(warning_short(w) for w in result.warnings),
             }
@@ -158,16 +160,31 @@ def _render_curve(points: tuple[PointResult, ...], number_format: NumberFormat) 
             for p in unplottable
         )
         st.warning(t("sheet.not_on_curve", positions=positions))
-    if len(unplottable) == sum(p.apparent_resistivity_ohm_m is not None for p in points):
+    plotted = sum(p.apparent_resistivity_ohm_m is not None for p in points) - len(unplottable)
+    if not plotted:
         return
+    st.toggle(t("sheet.error_bars"), key=state.SHEET_ERROR_BARS, help=t("sheet.error_bars_help"))
+    error_bars = state.sheet_error_bars()
+    if error_bars:
+        with_bars = sum(sounding_error_bar(p) is not None for p in points)
+        if with_bars:
+            positions = count("count.position", plotted)
+            st.caption(
+                t_for(with_bars, "sheet.error_bars_on", with_bars=with_bars, positions=positions)
+            )
+        else:
+            st.caption(t("sheet.error_bars_none"))
     labels = SoundingFigureLabels(
         title=t("figure.sounding_title"),
         x_axis=t("figure.ab2_axis"),
         y_axis=t("figure.rho_axis"),
         mn_legend=t("figure.mn_legend", mn="{mn}"),
         quality_warning=t("figure.quality_warning"),
+        error_bars=t("figure.error_bars"),
     )
-    figure = create_sounding_figure(points, number_format=number_format, labels=labels)
+    figure = create_sounding_figure(
+        points, number_format=number_format, labels=labels, error_bars=error_bars
+    )
     # A square bilog curve at full page width would be taller than the screen; 560 px still
     # shrinks to the container on phones.
     st.pyplot(figure, width=560)

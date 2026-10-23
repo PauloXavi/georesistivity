@@ -164,6 +164,7 @@ TEXT: dict[str, str] = {
     "figure.rho_axis": "Resistividade aparente [Ω·m]",
     "figure.mn_legend": "MN = {mn} m",
     "figure.quality_warning": "Aviso de qualidade",
+    "figure.error_bars": "±1 erro-padrão da média (n ≥ 2)",
     # Avisos de qualidade.
     "warning.negative_apparent_resistivity": (
         "Resistividade aparente negativa. Verifique a polaridade dos eletrodos de potencial, o "
@@ -219,6 +220,23 @@ TEXT: dict[str, str] = {
     "sheet.empty": "Digite ΔV e I em uma linha para ver o resultado e a curva.",
     "sheet.summary.one": "{positions} medida em {spacings}.",
     "sheet.summary.other": "{positions} medidas em {spacings}.",
+    "sheet.error_bars": "Barras de erro (±1 erro-padrão)",
+    "sheet.error_bars_help": (
+        "Erro-padrão da média de ΔV/I multiplicado por K (K·s/√n). Só existe nas posições "
+        "com duas ou mais leituras válidas. Se a barra passar de zero, a parte de baixo é "
+        "pontilhada até a borda do gráfico."
+    ),
+    "sheet.error_bars_on.one": (
+        "Barra de erro em {with_bars} de {positions} da curva "
+        "(só onde há duas ou mais leituras válidas)."
+    ),
+    "sheet.error_bars_on.other": (
+        "Barras de erro em {with_bars} de {positions} da curva "
+        "(só onde há duas ou mais leituras válidas)."
+    ),
+    "sheet.error_bars_none": (
+        "Nenhuma posição tem duas ou mais leituras válidas, então a curva não tem barras de erro."
+    ),
     "sheet.not_on_curve": "Fora da curva log-log porque ρa não é positivo: {positions}.",
     "sheet.position": "AB/2 = {ab2} m (MN = {mn} m)",
     "sheet.export_points": "Exportar pontos (CSV)",
@@ -230,6 +248,7 @@ TEXT: dict[str, str] = {
     "points.readings": "Leituras",
     "points.readings_excluded": "{used} (+{excluded} excluídas)",
     "points.rho": "ρa [Ω·m]",
+    "points.se": "Erro-padrão ρa [Ω·m]",
     "points.cv": "CV [%]",
     "points.warnings": "Avisos",
     # Modelos e nova folha.

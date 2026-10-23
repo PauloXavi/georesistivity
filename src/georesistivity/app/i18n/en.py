@@ -164,6 +164,7 @@ TEXT: dict[str, str] = {
     "figure.rho_axis": "Apparent resistivity [Ω·m]",
     "figure.mn_legend": "MN = {mn} m",
     "figure.quality_warning": "Quality warning",
+    "figure.error_bars": "±1 standard error of the mean (n ≥ 2)",
     # Quality warnings.
     "warning.negative_apparent_resistivity": (
         "Negative apparent resistivity. Check the polarity of the potential electrodes, the "
@@ -219,6 +220,23 @@ TEXT: dict[str, str] = {
     "sheet.empty": "Type ΔV and I in a row to see the result and the curve.",
     "sheet.summary.one": "{positions} read at {spacings}.",
     "sheet.summary.other": "{positions} read at {spacings}.",
+    "sheet.error_bars": "Error bars (±1 standard error)",
+    "sheet.error_bars_help": (
+        "Standard error of the mean of ΔV/I times K (K·s/√n). It exists only at positions "
+        "with two or more valid readings. If a bar goes below zero, its lower part is dotted "
+        "down to the edge of the plot."
+    ),
+    "sheet.error_bars_on.one": (
+        "Error bar on {with_bars} of {positions} on the curve (only where there are two or more "
+        "valid readings)."
+    ),
+    "sheet.error_bars_on.other": (
+        "Error bars on {with_bars} of {positions} on the curve (only where there are two or more "
+        "valid readings)."
+    ),
+    "sheet.error_bars_none": (
+        "No position has two or more valid readings, so the curve has no error bars."
+    ),
     "sheet.not_on_curve": "Not on the log-log curve because ρa is not positive: {positions}.",
     "sheet.position": "AB/2 = {ab2} m (MN = {mn} m)",
     "sheet.export_points": "Export points (CSV)",
@@ -230,6 +248,7 @@ TEXT: dict[str, str] = {
     "points.readings": "Readings",
     "points.readings_excluded": "{used} (+{excluded} excluded)",
     "points.rho": "ρa [Ω·m]",
+    "points.se": "ρa standard error [Ω·m]",
     "points.cv": "CV [%]",
     "points.warnings": "Warnings",
     # Templates and new sheet.

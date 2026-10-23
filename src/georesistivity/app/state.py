@@ -45,6 +45,7 @@ SHEET_VERSION = "sheet_version"
 SHEET_VOLTAGE_UNIT = "sheet_voltage_unit"
 SHEET_CURRENT_UNIT = "sheet_current_unit"
 SHEET_CV_LIMIT = "sheet_cv_limit_percent"
+SHEET_ERROR_BARS = "sheet_error_bars"
 SHEET_CONFIRM_NEW = "sheet_confirm_new"
 
 SESSION_ID = "session_id"
@@ -121,6 +122,7 @@ def initialize() -> None:
     st.session_state.setdefault(SHEET_VOLTAGE_UNIT, "mV")
     st.session_state.setdefault(SHEET_CURRENT_UNIT, "mA")
     st.session_state.setdefault(SHEET_CV_LIMIT, 100.0 * DEFAULT_CV_THRESHOLD)
+    st.session_state.setdefault(SHEET_ERROR_BARS, True)
     st.session_state.setdefault(SHEET_CONFIRM_NEW, False)
     st.session_state.setdefault(SESSION_ID, new_session_id())
     st.session_state.setdefault(CURRENT_SHEET_ROWS, None)
@@ -257,6 +259,11 @@ def sheet_units() -> tuple[str, str]:
 def sheet_cv_threshold() -> float:
     """Coefficient-of-variation limit of the field sheet, as a fraction."""
     return cast(float, st.session_state[SHEET_CV_LIMIT]) / 100.0
+
+
+def sheet_error_bars() -> bool:
+    """Whether the sounding curve shows error bars."""
+    return cast(bool, st.session_state[SHEET_ERROR_BARS])
 
 
 def sheet_confirm_new() -> bool:
