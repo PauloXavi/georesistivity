@@ -465,12 +465,98 @@ Também posso parar ao fim de cada marco, se você preferir revisar aos poucos.
 
 Depois da P1 (sem começar sem a sua aprovação):
 - **P2:** curva de SEV por segmento de MN com barras de erro; exportação de figura;
-  relatório PDF/HTML; edição de qualquer leitura com histórico.
+  relatório PDF/HTML; edição de qualquer leitura com histórico. Proposta na seção 15.
 - **P3 (aprovação explícita):** modelagem direta e inversão 1D; sugestão do tipo de curva.
 
 ---
 
-## 15. Riscos
+## 15. Proposta da P2
+
+**Status:** proposta em 2026-10-22, aguardando aprovação. Nenhum código da P2 foi escrito.
+
+### 15.1 Ponto de partida
+
+| Item | O que a P1 já tem | O que falta |
+| --- | --- | --- |
+| Curva com barras de erro | Erro-padrão do ρa por posição, `K · s / √n` (`PointResult.standard_error_ohm_m`), já exportado no CSV de pontos; curva bilog com um segmento por MN. | Desenhar as barras, dizer na legenda o que elas representam e mostrar o erro na tabela de posições. |
+| Exportação de figura | Figura matplotlib da curva, com rótulos traduzíveis. | Arquivos PNG, SVG e PDF; título com os dados da SEV; opção de escala do papel bilog. |
+| Relatório PDF/HTML | Todos os dados e cálculos. | O documento, e textos traduzíveis fora da interface (para a CLI). |
+| Edição com histórico | Folha gravada exatamente como digitada; exclusão com motivo obrigatório. | Identidade estável de cada linha, horário de cada leitura, registro das alterações, desfazer; formato de projeto v2. |
+
+**Atenção às barras de erro:** só existe erro-padrão onde há duas ou mais leituras válidas na
+mesma posição. Na folha de campo a maioria das posições tem uma leitura só, então a curva vai
+ter barras em poucas posições. É o comportamento correto (o programa não inventa incerteza),
+mas convém saber antes.
+
+### 15.2 Ordem proposta
+
+| Marco | Entrega | Demonstrável | Tamanho |
+| --- | --- | --- | --- |
+| **M7 — Barras de erro** | Barra de ±1 erro-padrão em cada posição com n ≥ 2, na cor do segmento de MN; legenda dizendo o que a barra é; se ρa − erro ≤ 0 (impossível em eixo log), a barra inferior vai até a borda do gráfico e a posição recebe aviso; coluna de erro na tabela de posições; opção de mostrar ou ocultar as barras. | A SEV sintética mostra a barra na posição repetida; ligar e desligar. | Pequeno |
+| **M8 — Exportação de figura** | PNG (300 dpi), SVG e PDF vetorial da curva; título opcional com SEV nº, local e data; tamanho "tela" ou **escala do papel bilog** (milímetros por década, para sobrepor às curvas-padrão); nome do arquivo a partir do projeto; comando `georesistivity plot projeto.geores.json -o curva.pdf`. | Baixar os três formatos; imprimir o PDF em 100% e medir uma década com régua. | Pequeno |
+| **M9 — Edição com histórico** | Formato de projeto v2 com migração do v1; identificador oculto e estável em cada linha; horário em que cada leitura ficou completa; registro automático de cada alteração de valor já digitado (antes e depois, linha, coluna, horário), de linhas apagadas e de trocas da folha (importação, nova folha); painel "Histórico" com filtro por linha e botão **Desfazer última alteração**; histórico exportável em CSV. | Digitar, corrigir um ΔV, apagar uma linha, desfazer, fechar, reabrir o projeto e encontrar o histórico intacto. | Grande |
+| **M10 — Relatório PDF/HTML** | Módulo `report.py` que monta o conteúdo uma vez e o desenha em dois formatos: HTML autocontido (figura SVG embutida, abre sem internet, imprime bem) e PDF A4. Conteúdo: cabeçalho da folha, curva com barras, tabela de posições, leituras com exclusões e motivos, alertas, histórico, fórmulas e referências, versão do programa, data de geração e SHA-256 do arquivo de projeto. Comando `georesistivity report`. | Gerar os dois relatórios da SEV sintética, em português e em inglês. | Médio |
+
+**Por que essa ordem:**
+1. M7 e M8 são pequenos, de baixo risco, mexem só no gráfico e dão resultado visível logo. O
+   relatório reaproveita os dois.
+2. O M9 vem **antes** do relatório porque muda o formato do projeto e cria dados (horário das
+   leituras, histórico) que o relatório precisa mostrar. Na ordem inversa, o relatório seria
+   refeito.
+3. O M10 fecha a P2 porque junta tudo.
+
+**Alternativa:** começar pelo M9, se você pretende usar o programa em campo logo. Assim todo
+dado digitado já nasce com histórico; o custo é adiar as entregas visuais.
+
+**Ponto de parada:** ao fim de cada marco, com demonstração, como na P1.
+
+### 15.3 Decisões
+
+| ID | Decisão | Recomendação |
+| --- | --- | --- |
+| D-10 | O que a barra de erro representa | **±1 erro-padrão da média** (`K · s / √n`), como previsto na seção 7.2, só com n ≥ 2. Alternativas: intervalo de 95% com t de Student (com n = 2 a barra é 12,7 vezes o erro-padrão e domina a curva) ou ±1 desvio-padrão (mostra a dispersão das leituras, não a incerteza do ρa). |
+| D-11 | Idioma do relatório | **O idioma da interface no momento da geração** (PT-BR por padrão), com números no formato escolhido. É uma exceção à regra "arquivos em inglês", porque o relatório é lido por pessoas; CSV e projeto continuam em inglês. |
+| D-12 | Como gerar o PDF | **Sem dependência nova:** HTML autocontido e PDF desenhado com o matplotlib, que já é dependência. O WeasyPrint exige bibliotecas do sistema (Pango), difíceis de instalar no Windows; o ReportLab seria mais uma dependência para manter. |
+| D-13 | Política do histórico | **Registro automático, sem exigir motivo:** toda alteração de valor já digitado, toda linha apagada e toda troca da folha entram no histórico com horário; digitar numa célula vazia não conta como alteração. A exclusão continua exigindo motivo. Alternativa mais rígida, no estilo das boas práticas de laboratório: exigir motivo para corrigir uma leitura completa. É mais rastreável, mas atrapalha a digitação em campo. |
+| D-14 | Horário da leitura | **Automático:** o momento em que ΔV e I da linha ficaram completos, gravado como "digitado em". Quando a folha é passada a limpo no escritório, esse é o horário da digitação, não o da medição, e o relatório diz isso. Como a folha de papel não tem coluna de hora, não proponho hora digitada à mão. |
+| D-15 | Escala do papel bilog | Preciso do **módulo do papel que você usa** (tamanho de uma década, em mm) para usar como padrão na exportação em escala. O valor fica configurável. |
+
+### 15.4 Notas técnicas
+
+- Os catálogos de texto saem de `georesistivity.app.i18n` (que importa o Streamlit) para um
+  módulo `georesistivity.i18n` sem Streamlit, para que o relatório e a CLI usem os mesmos
+  textos da tela. A interface continua usando `t()`.
+- No HTML, todo texto digitado (local, notas, motivos) passa por `html.escape`, para que um
+  projeto não consiga injetar código no relatório (mesma ideia do S-01 no CSV).
+- Identidade de linha: coluna oculta no `st.data_editor`; linhas novas recebem identificador na
+  hora. A comparação entre o estado anterior e o atual da folha é uma função pura
+  (`diff_sheet`), testada sem interface.
+- Formato v2 do projeto, com migração automática do v1 (identificadores novos, horários vazios,
+  histórico vazio). Um arquivo v1 de exemplo fica nos testes para garantir que continua abrindo.
+
+```json
+{
+  "sheet": {
+    "rows": [
+      {"id": "r0007", "marker": "VD", "ab2": "10", "mn": "2", "delta_v": "82,0",
+       "current": "41,5", "excluded": false, "reason": "",
+       "entered_at": "2026-10-22T09:14:03-03:00"}
+    ]
+  },
+  "history": [
+    {"at": "2026-10-22T09:20:11-03:00", "action": "edit", "row": "r0007",
+     "field": "delta_v", "old": "80,2", "new": "82,0"},
+    {"at": "2026-10-22T09:31:40-03:00", "action": "delete_row", "row": "r0012",
+     "old_row": {"ab2": "13", "mn": "2", "delta_v": "51,3", "current": "40,8"}}
+  ]
+}
+```
+
+- Fora da P2, como antes: o teclado numérico no celular (seção 16) e qualquer item da P3.
+
+---
+
+## 16. Riscos
 
 | Risco | Mitigação |
 | --- | --- |
@@ -478,5 +564,7 @@ Depois da P1 (sem começar sem a sua aprovação):
 | Mudança de formato de projeto quebrar arquivos antigos. | `schema_version`, migrações testadas e arquivos de exemplo de cada versão nos testes. |
 | O stlite (opção C) não suportar a versão do Streamlit usada. | Prova de conceito curta antes de qualquer compromisso; o núcleo e os serviços não dependem disso. |
 | A tabela editável do Streamlit (`st.data_editor`) interpretar números pela localidade do navegador, fugindo da regra D-1. | As colunas ΔV e I são de texto e cada célula passa por `parse_number`; uma coluna de status mostra o erro da linha. |
-| O teclado numérico no celular continuar alfabético. | Na opção A/B, documentar e avaliar um componente pequeno de entrada numérica na P2. Isso não bloqueia a P1. |
+| O teclado numérico no celular continuar alfabético. | Na opção A/B, documentar e avaliar um componente pequeno de entrada numérica. Ficou fora da P2 (seção 15); entra se o uso em campo pedir. |
+| A coluna oculta de identificador da folha não sobreviver a alguma operação do `st.data_editor` (ordenar, colar várias linhas). | Conferir no navegador, no M9, ordenar, colar e apagar linhas. Se alguma operação perder o identificador, a linha é registrada no histórico como substituída, e nada se perde. |
+| O histórico deixar o autosave lento. | Cada alteração ocupa cerca de 200 bytes no JSON indentado; mil alterações são cerca de 200 kB. Medir no M9 e, se preciso, gravar o histórico em arquivo separado. |
 | Crescimento de escopo. | Marcos curtos e pontos de parada; a P3 só começa com aprovação explícita. |
