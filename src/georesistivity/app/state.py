@@ -15,6 +15,7 @@ from georesistivity.io import CsvDialect
 from georesistivity.messages import GeoValueError
 from georesistivity.models import MeasurementResult
 from georesistivity.project import Project, SheetSettings, SurveyInfo
+from georesistivity.report import ReportFormat
 from georesistivity.services import GeometricFactorMode, MeasurementInput
 from georesistivity.sheet_history import (
     HistoryEntry,
@@ -66,6 +67,7 @@ SHEET_HISTORY = "sheet_history"
 LOGGED_UNITS = "sheet_logged_units"
 HISTORY_MESSAGE = "history_message"
 HISTORY_FILTER = "history_row_filter"
+REPORT_FORMAT = "report_format"
 
 SESSION_ID = "session_id"
 CURRENT_SHEET_ROWS = "current_sheet_rows"
@@ -141,6 +143,7 @@ def initialize() -> None:
     st.session_state.setdefault(LOGGED_UNITS, ("mV", "mA"))
     st.session_state.setdefault(HISTORY_MESSAGE, None)
     st.session_state.setdefault(HISTORY_FILTER, "")
+    st.session_state.setdefault(REPORT_FORMAT, "pdf")
     st.session_state.setdefault(SHEET_VERSION, 0)
     st.session_state.setdefault(SHEET_VOLTAGE_UNIT, "mV")
     st.session_state.setdefault(SHEET_CURRENT_UNIT, "mA")
@@ -329,6 +332,11 @@ def undo_last_change() -> None:
         return
     _set_units(*result.units)
     reset_sheet(result.rows, entry=result.entry)
+
+
+def report_format() -> ReportFormat:
+    """Format chosen for the report download."""
+    return cast(ReportFormat, st.session_state[REPORT_FORMAT])
 
 
 def history_message() -> GeoValueError | None:

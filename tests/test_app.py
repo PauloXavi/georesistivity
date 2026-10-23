@@ -14,6 +14,7 @@ from streamlit.testing.v1 import AppTest
 from georesistivity.app import MAIN_SCRIPT
 from georesistivity.app.field_sheet_view import (
     figure_download,
+    report_download,
     rows_from_dataframe,
     rows_to_dataframe,
 )
@@ -1280,3 +1281,24 @@ def test_undo_with_nothing_to_undo_changes_nothing() -> None:
     assert not app_test.exception
     assert app_test.session_state["sheet_history"] == []
     assert app_test.session_state["sheet_version"] == 0
+
+
+def test_report_panel_offers_pdf_or_html() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+
+    assert app_test.radio(key="report_format").value == "pdf"
+    labels = [str(b.proto.label) for b in app_test.get("download_button")]
+    assert "Download report (PDF)" in labels
+
+    app_test.radio(key="report_format").set_value("html").run()
+
+    labels = [str(b.proto.label) for b in app_test.get("download_button")]
+    assert "Download report (HTML)" in labels
+
+
+def test_report_download_builds_the_file_when_called() -> None:
+    project = Project(sheet_rows=(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),))
+
+    download = report_download(project, "html", language="en", number_format="en", error_bars=True)
+
+    assert download().startswith(b"<!DOCTYPE html>")

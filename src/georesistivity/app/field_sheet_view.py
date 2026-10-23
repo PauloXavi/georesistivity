@@ -1,6 +1,5 @@
 """Field-sheet page: the digital Schlumberger sheet with its live curve."""
 
-import datetime as dt
 import math
 from collections.abc import Callable, Sequence
 
@@ -10,6 +9,7 @@ import streamlit as st
 from georesistivity.app import state
 from georesistivity.app.common import CURRENT_UNITS, VOLTAGE_UNITS, warning_short
 from georesistivity.app.i18n import (
+    Language,
     count,
     current_language,
     error_text,
@@ -37,13 +37,18 @@ from georesistivity.plotting import (
     sounding_decades,
     sounding_error_bar,
 )
-from georesistivity.project import SheetTemplate, SurveyInfo
-from georesistivity.sheet_history import (
-    ROW_FIELDS,
-    HistoryEntry,
-    field_text,
-    undoable_entry,
+from georesistivity.project import Project, SheetTemplate, SurveyInfo
+from georesistivity.report import (
+    REPORT_FORMATS,
+    REPORT_MIME,
+    ReportFormat,
+    build_report,
+    describe_change,
+    history_time,
+    report_file,
+    report_file_name,
 )
+from georesistivity.sheet_history import HistoryEntry, undoable_entry
 from georesistivity.storage import list_templates, save_template
 from georesistivity.survey import PointResult
 
@@ -451,43 +456,60 @@ def render_field_sheet() -> None:
             _render_figure_export(points, number_format)
 
     _render_exports(points)
+    _render_report()
     _render_history()
     _render_layout_tools()
 
 
-def _value(name: str, value: str) -> str:
-    if name == "excluded":
-        return t("history.yes") if value == "true" else t("history.no")
-    return value if value.strip() else t("history.empty_value")
+REPORT_FORMAT_LABELS: dict[ReportFormat, str] = {"pdf": "PDF (A4)", "html": "HTML"}
 
 
-def _row_summary(row: SheetRow) -> str:
-    return " · ".join(
-        f"{t(f'history.field_{name}')} {_value(name, field_text(row, name))}"
-        for name in ROW_FIELDS
-        if field_text(row, name).strip() and field_text(row, name) != "false"
-    )
+def report_download(
+    project: Project,
+    report_format: ReportFormat,
+    *,
+    language: Language,
+    number_format: NumberFormat,
+    error_bars: bool,
+) -> Callable[[], bytes]:
+    """File of the report button, built only when it is clicked."""
 
-
-def describe_change(entry: HistoryEntry) -> str:
-    """One line describing ``entry`` in the current language."""
-    if entry.action == "edit" and entry.field is not None:
-        return t(
-            "history.edit",
-            field=t(f"history.field_{entry.field}"),
-            old=_value(entry.field, entry.old),
-            new=_value(entry.field, entry.new),
+    def build() -> bytes:
+        report = build_report(
+            project, language=language, number_format=number_format, error_bars=error_bars
         )
-    if entry.action == "delete_row" and entry.old_row is not None:
-        return t("history.delete_row", summary=_row_summary(entry.old_row))
-    if entry.action == "replace_sheet":
-        return t(f"history.replace_{entry.source or 'new_sheet'}", detail=entry.detail)
-    if entry.action == "append_rows":
-        rows = count("count.row", len(entry.row_ids))
-        return t("history.append_rows", rows=rows, detail=entry.detail)
-    if entry.action == "units":
-        return t("history.units", old=entry.old, new=entry.new)
-    return t("history.undo_entry", number=entry.undoes)
+        return report_file(report, report_format)
+
+    return build
+
+
+def _render_report() -> None:
+    with st.expander(t("report.panel"), icon=":material/description:"):
+        st.caption(t("report.panel_caption"))
+        st.radio(
+            t("report.format"),
+            REPORT_FORMATS[::-1],
+            format_func=REPORT_FORMAT_LABELS.__getitem__,
+            key=state.REPORT_FORMAT,
+            horizontal=True,
+        )
+        report_format = state.report_format()
+        project = state.current_project()
+        st.download_button(
+            t("report.download", format=report_format.upper()),
+            data=report_download(
+                project,
+                report_format,
+                language=current_language(),
+                number_format=state.number_format(),
+                error_bars=state.sheet_error_bars(),
+            ),
+            file_name=report_file_name(project, report_format),
+            mime=REPORT_MIME[report_format],
+            icon=":material/download:",
+            on_click="ignore",
+            key="download_report",
+        )
 
 
 def _history_row_labels(
@@ -511,12 +533,9 @@ def _history_row_labels(
     return labels
 
 
-def _time_text(moment: str) -> str:
-    return dt.datetime.fromisoformat(moment).strftime(t("history.time_format"))
-
-
 def _render_history() -> None:
     history = state.history()
+    language = current_language()
     # A fixed label: Streamlit closes an expander whose label changes.
     with st.expander(t("history.title"), icon=":material/history:"):
         error = state.history_message()
@@ -530,7 +549,8 @@ def _render_history() -> None:
         if next_undo is None:
             undo_text = t("history.nothing_to_undo")
         else:
-            undo_text = t("history.next_undo", change=describe_change(history[next_undo - 1]))
+            change = describe_change(history[next_undo - 1], language)
+            undo_text = t("history.next_undo", change=change)
         st.caption(f"{count('history.count', len(history))} {undo_text}")
         st.button(
             t("history.undo"),
@@ -556,11 +576,11 @@ def _render_history() -> None:
             entry = history[number - 1]
             if chosen and entry.row != chosen:
                 continue
-            change = describe_change(entry)
+            change = describe_change(entry, language)
             records.append(
                 {
                     t("history.col_number"): number,
-                    t("history.col_time"): _time_text(entry.at),
+                    t("history.col_time"): history_time(entry.at, language),
                     t("history.col_row"): "" if entry.row_number is None else entry.row_number,
                     t("history.col_change"): (
                         t("history.undone", change=change) if number in undone else change
