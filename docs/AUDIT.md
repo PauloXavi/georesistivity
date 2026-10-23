@@ -442,6 +442,10 @@ git log --all --oneline -- "Relatorio final.docx" "PlanoEstagio*" "ajustar taman
 Se aparecer algum commit, o histórico precisa ser reescrito (`git filter-repo`). Isso é uma
 ação destrutiva e deve ser feita por você.
 
+**Verificado em 2026-10-22:** o repositório público tem um único branch (`main`), 5 commits e
+nenhuma tag. Nenhum desses arquivos, nem qualquer `.doc`, `.docx`, `.pdf` ou `.txt`, aparece em
+nenhum commit. Não é preciso reescrever o histórico.
+
 #### S-04 — Sem lockfile para o aplicativo
 **Sugestão** · reprodutibilidade · `pyproject.toml`
 
@@ -581,6 +585,6 @@ significativos).
 | S-01 | Corrigido | |
 | I-01 | Corrigido | Dialeto `excel-pt-br`. |
 | S-02 | Corrigido | `.streamlit/config.toml`. |
-| S-03 | Pendente (autor) | Rodar o comando da seção S-03 no clone original. |
+| S-03 | Verificado | Histórico público sem os documentos privados (2026-10-22). |
 | S-04 | Fase 3 | Lockfile junto com a decisão de distribuição do app. |
 | L-01 | Pendente | Sugestão fora do escopo da Fase 2. |
