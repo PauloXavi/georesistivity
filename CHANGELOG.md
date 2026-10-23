@@ -8,6 +8,8 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-23
+
 ### Added
 
 - P2 proposal (milestones M7 to M10 and decisions D-10 to D-15) in `docs/ARCHITECTURE.md`.

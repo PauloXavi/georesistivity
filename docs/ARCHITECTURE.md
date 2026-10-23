@@ -610,6 +610,10 @@ contendo `<script>`). Comando `georesistivity report`. Limites: no PDF, a quebra
 células usa uma largura média de caractere, então textos muito largos podem encostar na coluna
 vizinha; a D-15 (módulo do papel bilog) continua pendente.
 
+**Consolidação:** a P2 foi trazida para a `main` local em 2026-10-23 como versão `0.4.0`
+(seção correspondente do `CHANGELOG.md`). As branches de cada marco foram mantidas. A P3
+(modelagem direta, inversão 1D e sugestão do tipo de curva) só começa com aprovação explícita.
+
 ---
 
 ## 16. Riscos
