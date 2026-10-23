@@ -255,7 +255,17 @@ The **Field sheet (VES)** tab is a digital version of the paper Schlumberger sou
   is named after them (for example `SEV-01-Fazenda-ves-curve.pdf`). The same sheet and options
   always give the same file.
 - **Export points (CSV)** gives one row per position with its statistics; **Export readings
-  (CSV)** gives every reading, including excluded ones and their reasons.
+  (CSV)** gives every reading, including excluded ones and their reasons, and the time it was
+  entered.
+- **Change history**, below the exports, records every correction of a value that was already
+  typed (before and after), every deleted row, every replacement of the sheet (import, new
+  sheet, template), rows added by an import, and every change of the ΔV or I unit, each with
+  its time. Typing into an empty cell is data entry and is not recorded, and exclusions still
+  need a reason. **Undo last change** reverts the latest change that has not been undone and
+  records that too, so nothing is erased from the history. The table can show one row at a
+  time, and **Export history (CSV)** saves it. Each row also keeps the time its ΔV and I were
+  first both filled in ("entered at"); when a paper sheet is typed in later, that is the time
+  of typing, not of the measurement.
 
 - A row with only ΔV or only I is shown as waiting for its other value, not as an error.
 - **Survey details** above the sheet record the header of the paper sheet: survey name,
@@ -265,8 +275,8 @@ The **Field sheet (VES)** tab is a digital version of the paper Schlumberger sou
 ## Projects, Autosave, and Templates
 
 Everything typed in a session (survey details, the field sheet exactly as typed, its units and
-CV limit, and the single measurements) can be saved as a project file and is autosaved on this
-computer.
+CV limit, its change history, and the single measurements) can be saved as a project file and
+is autosaved on this computer.
 
 - **Save project** in the sidebar downloads a `.geores.json` file named after the SEV number
   and place, for example `SEV-03-Fazenda_Teste.geores.json`. **Open project** loads one and
@@ -282,9 +292,11 @@ computer.
   current sheet as a template (without readings) and starts new sheets from the standard
   layout or a saved template. Templates live in `~/GeoResistivity/templates/`.
 
-The project file is plain, indented JSON with a `schema_version`. Calculated values are not
+The project file is plain, indented JSON with a `schema_version` (currently 2, which added an
+id and an entered-at time to each sheet row and the change history). Calculated values are not
 stored; they are recomputed from the original values when the file is opened, and files from
-older versions are migrated automatically. Set `GEORESISTIVITY_HOME` to keep the local files
+older versions are migrated automatically: a version 1 file opens with new row ids, no
+reading times, and an empty history. Set `GEORESISTIVITY_HOME` to keep the local files
 in another folder, and start the interface with `--no-autosave` (or set
 `GEORESISTIVITY_AUTOSAVE=0`) to turn autosave off, for example on a shared server.
 
@@ -511,6 +523,7 @@ GeoResistivity/
 │   ├── plotting.py
 │   ├── project.py
 │   ├── services.py
+│   ├── sheet_history.py
 │   ├── stacking.py
 │   ├── storage.py
 │   ├── survey.py
@@ -526,6 +539,7 @@ GeoResistivity/
 | --- | --- |
 | `src/georesistivity/app/` | Streamlit presentation layer (`main.py`, `field_sheet_view.py`), shared labels (`common.py`), and typed session state (`state.py`). |
 | `src/georesistivity/services.py` | Application use cases shared by the interfaces, without Streamlit. |
+| `src/georesistivity/sheet_history.py` | Change history of the field sheet: row ids, reading times, recorded changes, and undo. |
 | `src/georesistivity/cli.py` | The `georesistivity` command. |
 | `app/app.py` | Compatibility entry point for `streamlit run app/app.py`. |
 | `src/georesistivity/core.py` | Pure scientific calculation and measurement processing. |

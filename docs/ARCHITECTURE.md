@@ -577,6 +577,25 @@ português, os catálogos de texto passaram de `georesistivity.app.i18n` para
 `georesistivity.i18n` (prevista na seção 15.4 para o M10). O botão gera o arquivo só no clique,
 para que a figura em 300 dpi não seja redesenhada a cada célula digitada.
 
+**Andamento:** M9 concluído em 2026-10-23: formato de projeto v2 com migração do v1 (arquivo v1
+sintético nos testes); identificador estável e horário de leitura completa em cada linha;
+histórico só de acréscimo com correções, linhas apagadas, folha substituída (importação, nova
+folha, modelo), linhas acrescentadas por importação e troca de unidades; "Desfazer última
+alteração", que também é registrado; painel com filtro por linha e exportação em CSV; horário
+no CSV de leituras. Além do previsto, a troca de unidades de ΔV/I entra no histórico, porque
+muda todos os ρa. Sobre o risco da seção 16: o editor devolve a coluna oculta de identificador
+nas linhas que recebeu, mas as linhas acrescentadas pelo usuário voltam sem identificador.
+Essas são casadas com a execução anterior por alinhamento de sequência (conteúdo e posição).
+No navegador, acrescentar quatro linhas e apagar a primeira gerou um único registro de linha
+apagada, sem correções falsas nas linhas de baixo. O histórico e os horários também voltaram
+intactos pela recuperação do salvamento automático. Dois limites: importações com acréscimo
+ganham o horário da importação, e a seção 8 previa horário por leitura dentro de cada ponto,
+enquanto aqui ele fica na linha da folha (uma leitura por linha, como no papel).
+Medido: mil alterações somam cerca de 200 KiB no arquivo, gravado em cerca de 1 ms e lido em
+cerca de 5 ms, então o histórico fica no próprio projeto. Não conferido no navegador: ordenar
+colunas e colar várias linhas no editor; se alguma dessas operações perder o identificador, o
+alinhamento por conteúdo assume, como nas linhas acrescentadas.
+
 ---
 
 ## 16. Riscos

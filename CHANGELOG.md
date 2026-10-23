@@ -33,8 +33,22 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
 - Figure files are reproducible (no creation date, fixed SVG ids) and PDF fonts are embedded
   as TrueType.
 
+- **Change history** of the field sheet (D-13): corrections of typed values, deleted rows,
+  replaced sheets (import, new sheet, template), rows added by an import, and unit changes
+  are recorded with their time; typing into an empty cell is not. **Undo last change** reverts
+  the latest change not yet undone and records the undo. The history panel filters by row and
+  exports the history as CSV (`io.history_to_csv`).
+- Each sheet row keeps a stable `id` and the time its reading was first complete
+  (`entered_at`, D-14), also in the readings CSV (`Entered at`) and `survey.Reading`.
+- `georesistivity.sheet_history` (`reconcile_sheet`, `undo_last`, `HistoryEntry`, and
+  helpers) and `Project.history`.
+- A synthetic version 1 project file in the tests, to keep older files opening.
+
 ### Changed
 
+- **Project files are now schema version 2**: rows store `id` and `entered_at`, and the
+  project stores `history`. Version 1 files are migrated when opened (new row ids, empty
+  history); files written by this version cannot be opened by 0.3.0.
 - The text catalogs moved from `georesistivity.app.i18n` to `georesistivity.i18n`, which
   does not import Streamlit, so the command line can label figures in Portuguese.
 
