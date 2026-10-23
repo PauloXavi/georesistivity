@@ -2,7 +2,7 @@
 
 This module only renders widgets and forwards user actions. Input rules live in
 :mod:`georesistivity.services`, session access in :mod:`georesistivity.app.state`, and texts in
-:mod:`georesistivity.app.i18n` (Portuguese by default, or English).
+:mod:`georesistivity.i18n` (Portuguese by default, or English).
 """
 
 import streamlit as st

@@ -1,10 +1,10 @@
-"""Tests for the interface catalogs in Portuguese and English."""
+"""Tests for the text catalogs in Portuguese and English."""
 
 import string
 
 import pytest
 
-from georesistivity.app.i18n import LANGUAGES, PROBLEMS, TEXTS, text_in
+from georesistivity.i18n import LANGUAGES, PROBLEMS, TEXTS, text_in
 from georesistivity.messages import EN, Problem
 
 

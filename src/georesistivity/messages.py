@@ -1,7 +1,7 @@
 """Messages of the scientific core: stable codes with English text.
 
 Problems caused by user input carry a code and parameters (:class:`Problem`), so interfaces
-can show them in another language (see ``georesistivity.app.i18n``) while ``str(error)``
+can show them in another language (see ``georesistivity.i18n``) while ``str(error)``
 stays English for programs and logs. Errors that only signal programming mistakes keep plain
 exception messages.
 """

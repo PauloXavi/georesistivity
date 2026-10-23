@@ -1,39 +1,48 @@
-"""Interface texts in Brazilian Portuguese (default) and English.
+"""Interface texts in the language selected in the Streamlit session.
 
-Texts are looked up by key in Python catalogs (``pt_br.py`` and ``en.py``); a test checks
-that both catalogs have the same keys and placeholders. Errors of the scientific core are
-translated by their message code (:class:`georesistivity.messages.Problem`), never by their
-English text. CSV headers and project files stay in English, so files are the same whatever
-the interface language.
+The catalogs and the language list live in :mod:`georesistivity.i18n`, which does not import
+Streamlit; this module adds the session language and the helpers used by the pages.
 """
 
 from collections.abc import Callable
-from typing import Literal, cast
+from typing import cast
 
 import streamlit as st
 
-from georesistivity.app.i18n import en, pt_br
-from georesistivity.messages import EN as EN_PROBLEMS
+from georesistivity.i18n import (
+    DEFAULT_LANGUAGE,
+    LANGUAGES,
+    PROBLEMS,
+    TEXTS,
+    Language,
+    text_in,
+)
 from georesistivity.messages import Problem, problem_of
 
-Language = Literal["pt-BR", "en"]
-DEFAULT_LANGUAGE: Language = "pt-BR"
-LANGUAGES: dict[Language, str] = {"pt-BR": "Português (Brasil)", "en": "English"}
-LANGUAGE_KEY = "language"
+__all__ = [
+    "DEFAULT_LANGUAGE",
+    "LANGUAGES",
+    "LANGUAGE_KEY",
+    "PROBLEMS",
+    "TEXTS",
+    "Language",
+    "count",
+    "current_language",
+    "error_text",
+    "problem_text",
+    "t",
+    "t_for",
+    "text_in",
+    "translator",
+]
 
-TEXTS: dict[Language, dict[str, str]] = {"pt-BR": pt_br.TEXT, "en": en.TEXT}
-PROBLEMS: dict[Language, dict[str, str]] = {"pt-BR": pt_br.PROBLEMS, "en": EN_PROBLEMS}
+LANGUAGE_KEY = "language"
 
 
 def current_language() -> Language:
     """Language selected in this session (Portuguese by default)."""
     value = st.session_state.get(LANGUAGE_KEY, DEFAULT_LANGUAGE)
     return cast(Language, value) if value in LANGUAGES else DEFAULT_LANGUAGE
-
-
-def text_in(language: Language, key: str, **params: object) -> str:
-    """The text of ``key`` in ``language``, with its placeholders filled in."""
-    return TEXTS[language][key].format(**params)
 
 
 def t(key: str, **params: object) -> str:
