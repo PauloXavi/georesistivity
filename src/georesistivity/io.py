@@ -5,7 +5,9 @@ from typing import Literal
 
 import pandas as pd
 
+from georesistivity.field_sheet import SheetRow
 from georesistivity.models import MeasurementResult
+from georesistivity.sheet_history import ROW_FIELDS, HistoryEntry, field_text, units_text
 from georesistivity.spreadsheet import neutralize_spreadsheet_formula
 from georesistivity.survey import PointResult
 
@@ -153,6 +155,7 @@ SOUNDING_READING_COLUMNS = (
     "rho_a [ohm.m]",
     "Excluded",
     "Exclusion reason",
+    "Entered at",
 )
 
 
@@ -204,6 +207,7 @@ def sounding_readings_to_dataframe(points: Sequence[PointResult]) -> pd.DataFram
                     "rho_a [ohm.m]": result.geometric_factor_m * reading_result.resistance_ohm,
                     "Excluded": reading.excluded,
                     "Exclusion reason": reading.exclusion_reason,
+                    "Entered at": reading.entered_at,
                 }
             )
     return pd.DataFrame(records, columns=SOUNDING_READING_COLUMNS)
@@ -226,3 +230,66 @@ def sounding_readings_to_csv(
     """Serialize every reading of the sounding to CSV text."""
     text_columns = ("Marker", "Voltage unit", "Current unit", "Exclusion reason")
     return _to_csv(sounding_readings_to_dataframe(points), text_columns, dialect)
+
+
+HISTORY_COLUMNS = (
+    "No.",
+    "Time",
+    "Action",
+    "Row",
+    "Row id",
+    "Field",
+    "Old value",
+    "New value",
+    "Source",
+    "Detail",
+    "Undoes",
+)
+
+
+def _row_summary(row: SheetRow) -> str:
+    return "; ".join(
+        f"{name}={field_text(row, name)}"
+        for name in ROW_FIELDS
+        if field_text(row, name).strip() and field_text(row, name) != "false"
+    )
+
+
+def _rows(count: int) -> str:
+    return "1 row" if count == 1 else f"{count} rows"
+
+
+def history_to_dataframe(history: Sequence[HistoryEntry]) -> pd.DataFrame:
+    """One row per history entry, oldest first, with rows summarized as ``field=value``."""
+    records = []
+    for number, entry in enumerate(history, start=1):
+        old, new = entry.old, entry.new
+        if entry.action == "delete_row" and entry.old_row is not None:
+            old = _row_summary(entry.old_row)
+        elif entry.action == "replace_sheet" and entry.old_units is not None:
+            old = f"{_rows(len(entry.old_rows))}, {units_text(entry.old_units)}"
+        elif entry.action == "append_rows":
+            new = _rows(len(entry.row_ids))
+        records.append(
+            {
+                "No.": number,
+                "Time": entry.at,
+                "Action": entry.action,
+                "Row": entry.row_number,
+                "Row id": entry.row or None,
+                "Field": entry.field,
+                "Old value": old or None,
+                "New value": new or None,
+                "Source": entry.source or None,
+                "Detail": entry.detail or None,
+                "Undoes": entry.undoes,
+            }
+        )
+    frame = pd.DataFrame(records, columns=HISTORY_COLUMNS)
+    return frame.astype({"Row": "Int64", "Undoes": "Int64"})
+
+
+def history_to_csv(history: Sequence[HistoryEntry], *, dialect: CsvDialect = "standard") -> str:
+    """Serialize the change history of the field sheet to CSV text."""
+    text_columns = ("Old value", "New value", "Detail")
+    return _to_csv(history_to_dataframe(history), text_columns, dialect)

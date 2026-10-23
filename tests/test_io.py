@@ -17,13 +17,16 @@ from georesistivity import (
 )
 from georesistivity.field_sheet import SheetRow, evaluate_sheet
 from georesistivity.io import (
+    HISTORY_COLUMNS,
     SOUNDING_POINT_COLUMNS,
     SOUNDING_READING_COLUMNS,
+    history_to_csv,
     sounding_points_to_csv,
     sounding_points_to_dataframe,
     sounding_readings_to_csv,
     sounding_readings_to_dataframe,
 )
+from georesistivity.sheet_history import HistoryEntry
 from georesistivity.survey import PointResult
 
 
@@ -266,3 +269,58 @@ def test_sounding_csv_exports_protect_text_and_support_excel_pt_br() -> None:
 def test_sounding_exports_reject_unknown_dialect() -> None:
     with pytest.raises(ValueError, match="unsupported CSV dialect"):
         sounding_points_to_csv(sounding_points(), dialect="tsv")  # type: ignore[arg-type]
+
+
+def test_readings_table_has_the_time_each_reading_was_entered() -> None:
+    points = evaluate_sheet(
+        [
+            SheetRow(
+                ab2="1",
+                mn="0,5",
+                delta_v="80",
+                current="40",
+                entered_at="2026-10-23T09:00:00-03:00",
+            )
+        ],
+        voltage_unit="mV",
+        current_unit="mA",
+    ).points
+
+    table = sounding_readings_to_dataframe(points)
+
+    assert table["Entered at"].tolist() == ["2026-10-23T09:00:00-03:00"]
+
+
+def test_history_csv_lists_every_entry_and_protects_typed_text() -> None:
+    at = "2026-10-23T09:00:00-03:00"
+    deleted = SheetRow(ab2="1,8", mn="0,5", delta_v="9", current="50")
+    history = [
+        HistoryEntry(at, "edit", row="ra", row_number=1, field="reason", old="=1+1", new="ok"),
+        HistoryEntry(at, "delete_row", row="rc", row_number=3, old_row=deleted),
+        HistoryEntry(
+            at,
+            "replace_sheet",
+            source="import",
+            detail="a.csv",
+            old_rows=(deleted,),
+            old_units=("V", "A"),
+        ),
+        HistoryEntry(at, "append_rows", source="import", detail="b.csv", row_ids=("r1", "r2")),
+        HistoryEntry(at, "undo", undoes=1),
+    ]
+
+    rows = list(csv.DictReader(StringIO(history_to_csv(history))))
+
+    assert list(rows[0]) == list(HISTORY_COLUMNS)
+    assert [row["Action"] for row in rows] == [
+        "edit",
+        "delete_row",
+        "replace_sheet",
+        "append_rows",
+        "undo",
+    ]
+    assert rows[0]["Old value"] == "'=1+1"  # neutralized for spreadsheets
+    assert rows[1]["Old value"] == "ab2=1,8; mn=0,5; delta_v=9; current=50"
+    assert rows[2]["Old value"] == "1 row, V / A"
+    assert rows[3]["New value"] == "2 rows"
+    assert (rows[4]["Undoes"], rows[4]["Row"]) == ("1", "")
