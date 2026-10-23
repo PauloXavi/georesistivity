@@ -8,6 +8,8 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-22
+
 ### Added
 
 - `georesistivity app` command (also `python -m georesistivity app`) that starts the interface

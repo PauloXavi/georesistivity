@@ -11,7 +11,7 @@ import georesistivity
 
 
 def test_version_is_exposed() -> None:
-    assert georesistivity.__version__ == "0.2.0"
+    assert georesistivity.__version__ == "0.3.0"
 
 
 def test_every_public_name_resolves() -> None:

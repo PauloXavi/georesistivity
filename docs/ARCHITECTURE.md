@@ -457,6 +457,9 @@ de mesmas chaves e marcadores; erros do núcleo traduzidos por código
 (CSV, projeto) e a linha de comando continuam em inglês, para não depender do idioma da tela.
 Os poucos textos internos do botão de envio de arquivo do Streamlit não são traduzíveis.
 
+**Consolidação:** a P1 foi trazida para a `main` local em 2026-10-22 como versão `0.3.0`
+(seção correspondente do `CHANGELOG.md`). As branches de cada fase e marco foram mantidas.
+
 **Ponto de parada:** ao final do M6 eu paro, rodo o app e mostro capturas, conforme o plano.
 Também posso parar ao fim de cada marco, se você preferir revisar aos poucos.
 

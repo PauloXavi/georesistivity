@@ -7,7 +7,7 @@ Matplotlib until a tabular or plotting function is actually used.
 from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 _EXPORTS: dict[str, str] = {
     "AmbiguousNumberError": "georesistivity.validation",
