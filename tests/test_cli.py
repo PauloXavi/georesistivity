@@ -442,3 +442,61 @@ def test_plot_rejects_a_bad_modulus(value: str, capsys: pytest.CaptureFixture[st
 
     assert exit_info.value.code == 2
     assert "--decade-mm" in capsys.readouterr().err
+
+
+def test_report_writes_a_pdf_named_after_the_survey(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = write_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["report", str(project)]) == 0
+
+    written = tmp_path / "SEV-01-Fazenda-report.pdf"
+    assert written.read_bytes().startswith(b"%PDF")
+    assert page_mm(written.read_bytes()) == pytest.approx((210.0, 297.0))
+    assert re.fullmatch(
+        r"wrote SEV-01-Fazenda-report\.pdf \(pdf, \d+ pages\)\n", capsys.readouterr().out
+    )
+
+
+def test_report_as_html_in_english(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    project = write_project(tmp_path)
+    output = tmp_path / "report.html"
+
+    assert cli.main(["report", str(project), "-o", str(output), "--language", "en"]) == 0
+
+    page = output.read_text(encoding="utf-8")
+    assert page.startswith('<!DOCTYPE html>\n<html lang="en">')
+    assert "Vertical electrical sounding report" in page
+    assert capsys.readouterr().out == f"wrote {output} (html)\n"
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (["-o", "r.png"], "'r.png' must end in .html or .pdf"),
+        (["-o", "r.pdf", "--format", "html"], "ends in .pdf but --format is html"),
+    ],
+)
+def test_report_refuses_unclear_output_names(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], arguments: list[str], message: str
+) -> None:
+    project = write_project(tmp_path)
+
+    assert cli.main(["report", str(project), *arguments]) == 1
+
+    assert message in capsys.readouterr().err
+
+
+def test_report_reports_unreadable_projects_and_unwritable_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = write_project(tmp_path)
+
+    assert cli.main(["report", str(tmp_path / "missing.geores.json")]) == 1
+    assert cli.main(["report", str(project), "-o", str(tmp_path / "no" / "r.html")]) == 1
+
+    errors = capsys.readouterr().err
+    assert "cannot read" in errors
+    assert "cannot write" in errors

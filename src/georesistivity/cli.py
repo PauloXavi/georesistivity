@@ -3,10 +3,12 @@
 import argparse
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 from georesistivity import __version__
 from georesistivity.app import MAIN_SCRIPT
@@ -36,7 +38,14 @@ from georesistivity.geometry import (
 )
 from georesistivity.i18n import LANGUAGES, Language
 from georesistivity.models import MeasurementField, MeasurementWarning
-from georesistivity.project import ProjectFormatError, project_from_json
+from georesistivity.project import Project, ProjectFormatError, project_from_json
+from georesistivity.report import (
+    REPORT_FORMATS,
+    ReportFormat,
+    build_report,
+    report_file,
+    report_file_name,
+)
 from georesistivity.services import GeometricFactorMode, MeasurementInput, evaluate_submission
 from georesistivity.storage import AUTOSAVE_VARIABLE
 from georesistivity.units import convert_length_to_meters, split_quantity
@@ -254,6 +263,37 @@ def _add_plot_parser(subcommands: "argparse._SubParsersAction[argparse.ArgumentP
     )
 
 
+def _add_report_parser(subcommands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    report = subcommands.add_parser(
+        "report",
+        help="write the report of a project as PDF or HTML",
+        description="Write the report of a project (*.geores.json): survey details, summary, VES "
+        "curve, positions, readings, rows not used, quality warnings, change history, and "
+        "methods. The format comes from --format or from the output name.",
+    )
+    report.add_argument("project", type=Path, help="project file (*.geores.json)")
+    report.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="report file to write (default: named after the SEV number and place, e.g. "
+        "SEV-01-Fazenda-report.pdf, in the current directory)",
+    )
+    report.add_argument("--format", choices=REPORT_FORMATS, help="pdf or html (default: pdf)")
+    report.add_argument("--no-error-bars", action="store_true", help="leave out the error bars")
+    report.add_argument(
+        "--language",
+        choices=tuple(LANGUAGES),
+        default="pt-BR",
+        help="language of the report: pt-BR (default) or en",
+    )
+    report.add_argument(
+        "--number-format",
+        choices=("pt-BR", "en"),
+        help="decimal separator of the report (default: the one of --language)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for all subcommands."""
     parser = argparse.ArgumentParser(
@@ -295,6 +335,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_k_parser(subcommands)
     _add_calc_parser(subcommands)
     _add_plot_parser(subcommands)
+    _add_report_parser(subcommands)
     return parser
 
 
@@ -498,16 +539,42 @@ def run_calc(
     return 0
 
 
-def _figure_format(output: Path | None, requested: FigureFormat | None) -> FigureFormat:
-    """The format from --format and the output name, which must end in .png, .svg, or .pdf."""
+def _output_format(output: Path | None, requested: str | None, choices: Sequence[str]) -> str:
+    """The format from --format and the output name, whose suffix must be one of ``choices``.
+
+    The default is PDF.
+    """
     if output is None:
         return requested or "pdf"
     suffix = output.suffix.lower().lstrip(".")
-    if suffix not in FIGURE_FORMATS:
-        raise ValueError(f"the output name {output.name!r} must end in .png, .svg, or .pdf")
+    if suffix not in choices:
+        names = [f".{choice}" for choice in choices]
+        allowed = (
+            f"{', '.join(names[:-1])}, or {names[-1]}" if len(names) > 2 else " or ".join(names)
+        )
+        raise ValueError(f"the output name {output.name!r} must end in {allowed}")
     if requested is not None and requested != suffix:
         raise ValueError(f"the output name ends in .{suffix} but --format is {requested}")
     return suffix
+
+
+def _read_project(path: Path) -> Project | str:
+    """The project in ``path``, or an error message."""
+    try:
+        return project_from_json(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return f"cannot read {path}: {exc.strerror or exc}"
+    except ProjectFormatError as exc:
+        return f"{path}: {exc}"
+
+
+def _write(target: Path, data: bytes) -> str | None:
+    """Write ``data``; an error message if it cannot be written."""
+    try:
+        target.write_bytes(data)
+    except OSError as exc:
+        return f"cannot write {target}: {exc.strerror or exc}"
+    return None
 
 
 def run_plot(
@@ -523,15 +590,12 @@ def run_plot(
 ) -> int:
     """Save the VES curve of a project file and return the exit code."""
     try:
-        resolved = _figure_format(output, file_format)
+        resolved = cast(FigureFormat, _output_format(output, file_format, FIGURE_FORMATS))
     except ValueError as exc:
         return _fail(str(exc))
-    try:
-        project = project_from_json(project_path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        return _fail(f"cannot read {project_path}: {exc.strerror or exc}")
-    except ProjectFormatError as exc:
-        return _fail(f"{project_path}: {exc}")
+    project = _read_project(project_path)
+    if isinstance(project, str):
+        return _fail(project)
 
     outcome = evaluate_project_sheet(project)
     options = FigureOptions(
@@ -548,10 +612,9 @@ def run_plot(
         return _fail(f"{project_path}: {exc}")
 
     target = output or Path(figure_file_name(project.survey, resolved))
-    try:
-        target.write_bytes(data)
-    except OSError as exc:
-        return _fail(f"cannot write {target}: {exc.strerror or exc}")
+    error = _write(target, data)
+    if error is not None:
+        return _fail(error)
 
     plotted = sum(1 for point in outcome.points if (point.apparent_resistivity_ohm_m or 0.0) > 0)
     size = ""
@@ -574,6 +637,45 @@ def run_plot(
         )
         print(f"warning: {rows} invalid and left out; open the project in the app to see why")
     return 0
+
+
+def run_report(
+    *,
+    project_path: Path,
+    output: Path | None,
+    report_format: ReportFormat | None,
+    error_bars: bool,
+    language: Language,
+    number_format: NumberFormat | None,
+) -> int:
+    """Write the report of a project file and return the exit code."""
+    try:
+        resolved = cast(ReportFormat, _output_format(output, report_format, REPORT_FORMATS))
+    except ValueError as exc:
+        return _fail(str(exc))
+    project = _read_project(project_path)
+    if isinstance(project, str):
+        return _fail(project)
+    report = build_report(
+        project,
+        language=language,
+        number_format=number_format or ("pt-BR" if language == "pt-BR" else "en"),
+        error_bars=error_bars,
+    )
+    target = output or Path(report_file_name(project, resolved))
+    error = _write(target, report_file(report, resolved))
+    if error is not None:
+        return _fail(error)
+    pages = ""
+    if resolved == "pdf":
+        pages = f", {report_pages(target)} pages"
+    print(f"wrote {target} ({resolved}{pages})")
+    return 0
+
+
+def report_pages(path: Path) -> int:
+    """Number of pages of a PDF written by GeoResistivity."""
+    return len(re.findall(rb"/Type /Page(?!s)", path.read_bytes()))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -619,6 +721,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             decade_mm=args.decade_mm,
             error_bars=not args.no_error_bars,
             title_details=not args.no_title_details,
+            language=args.language,
+            number_format=args.number_format,
+        )
+    if args.command == "report":
+        return run_report(
+            project_path=args.project,
+            output=args.output,
+            report_format=args.format,
+            error_bars=not args.no_error_bars,
             language=args.language,
             number_format=args.number_format,
         )
