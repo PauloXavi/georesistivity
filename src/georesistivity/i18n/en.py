@@ -167,6 +167,88 @@ TEXT: dict[str, str] = {
     "figure.error_bars": "±1 standard error of the mean (n ≥ 2)",
     "figure.survey_number": "VES {number}",
     "figure.date_format": "%Y-%m-%d",
+    # Report.
+    "report.title": "Vertical electrical sounding report (Schlumberger)",
+    "report.details": "Survey and acquisition details",
+    "report.array": "Array",
+    "report.array_schlumberger": "Schlumberger (MN is the full distance between M and N)",
+    "report.units": "Units of ΔV / I",
+    "report.cv_limit": "CV limit",
+    "report.estimator": "Estimator",
+    "report.estimator_mean": "mean of ΔV/I over the readings not excluded",
+    "report.coordinates": "Coordinates ({crs})",
+    "report.summary": "Summary",
+    "report.summary_counts": "{positions} at {spacings}: {used} and {excluded}.",
+    "count.reading_used.one": "{n} reading used",
+    "count.reading_used.other": "{n} readings used",
+    "count.reading_excluded.one": "{n} excluded",
+    "count.reading_excluded.other": "{n} excluded",
+    "report.summary_range": (
+        "AB/2 from {ab2_min} to {ab2_max} m; ρa from {rho_min} to {rho_max} Ω·m."
+    ),
+    "report.summary_warnings.one": "{n} position with a quality warning.",
+    "report.summary_warnings.other": "{n} positions with a quality warning.",
+    "report.summary_unused.one": "{n} row of the sheet was not used (see below).",
+    "report.summary_unused.other": "{n} rows of the sheet were not used (see below).",
+    "report.summary_empty": "The sheet has no complete readings yet.",
+    "report.curve": "VES curve",
+    "report.no_curve": "No position has a positive ρa, so there is no curve.",
+    "report.points": "Positions",
+    "report.readings": "Readings",
+    "report.col_delta_v": "ΔV [{unit}]",
+    "report.col_current": "I [{unit}]",
+    "report.col_r": "R [Ω]",
+    "report.col_rho": "ρa [Ω·m]",
+    "report.col_excluded": "Excluded",
+    "report.col_reason": "Reason",
+    "report.col_entered": "Entered at",
+    "report.unused": "Rows of the sheet not used",
+    "report.col_row": "Row",
+    "report.col_problem": "Reason",
+    "report.waiting": "{column}: not typed yet",
+    "report.warnings": "Quality warnings",
+    "report.col_warning": "Warning",
+    "report.col_meaning": "Meaning",
+    "report.col_positions": "Positions",
+    "report.history": "Change history",
+    "report.no_history": "No changes recorded.",
+    "report.empty_table": "None.",
+    "report.methods": "Methods",
+    "report.method_k": (
+        "Exact Schlumberger geometric factor: K = π (L² − l²) / (2 l), with L = AB/2 and "
+        "l = MN/2, in metres."
+    ),
+    "report.method_rho": (
+        "Apparent resistivity: ρa = K · mean(ΔV_i / I_i) over the readings of the position that "
+        "are not excluded, in Ω·m; every reading has the same weight."
+    ),
+    "report.method_se": (
+        "Standard error of ρa: K · s / √n, with s the sample standard deviation of ΔV_i / I_i; it "
+        "exists only for n ≥ 2 and is the size of the error bars. CV = s / |mean|, flagged above "
+        "{cv_limit}%."
+    ),
+    "report.method_wide_mn": (
+        "Wide-MN warning when (AB/2) / (MN/2) < 4; K stays exact for any MN shorter than AB."
+    ),
+    "report.method_entered": (
+        '"Entered at" is the time the ΔV and I of the row were first both filled in on the '
+        "digital sheet. When a paper sheet is typed in later, it is the time of typing, not of "
+        "the measurement."
+    ),
+    "report.method_recomputed": (
+        "Calculated values are not stored in the project: this report recomputes them from the "
+        "typed values, in the units shown."
+    ),
+    "report.references": "References",
+    "report.footer": "GeoResistivity {version} · generated {time} · project SHA-256: {digest}",
+    "report.page": "Page {page} of {pages}",
+    "report.format": "Report format",
+    "report.download": "Download report ({format})",
+    "report.panel": "VES report",
+    "report.panel_caption": (
+        "Header, curve, positions, readings with exclusions, rows not used, warnings, history, "
+        "and methods, in the selected language and number format."
+    ),
     # Change history.
     "history.title": "Change history",
     "history.count.one": "{n} change recorded.",
@@ -335,7 +417,7 @@ TEXT: dict[str, str] = {
     # Survey details.
     "survey.title": "Survey details",
     "survey.name": "Survey name",
-    "survey.sev": "SEV nº",
+    "survey.sev": "VES no.",
     "survey.date": "Date",
     "survey.area": "Area",
     "survey.place": "Place",

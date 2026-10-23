@@ -24,3 +24,13 @@ PROBLEMS: dict[Language, dict[str, str]] = {"pt-BR": pt_br.PROBLEMS, "en": EN_PR
 def text_in(language: Language, key: str, **params: object) -> str:
     """The text of ``key`` in ``language``, with its placeholders filled in."""
     return TEXTS[language][key].format(**params)
+
+
+def count_in(language: Language, key: str, n: int) -> str:
+    """``1 linha`` / ``2 linhas``: the count of ``n`` with the right form, in ``language``."""
+    return text_in(language, f"{key}.{'one' if n == 1 else 'other'}", n=n)
+
+
+def text_for(language: Language, quantity: int, key: str, **params: object) -> str:
+    """The singular (``key.one``) or plural (``key.other``) form of a sentence about a quantity."""
+    return text_in(language, f"{key}.{'one' if quantity == 1 else 'other'}", **params)

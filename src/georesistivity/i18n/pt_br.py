@@ -167,6 +167,86 @@ TEXT: dict[str, str] = {
     "figure.error_bars": "±1 erro-padrão da média (n ≥ 2)",
     "figure.survey_number": "SEV {number}",
     "figure.date_format": "%d/%m/%Y",
+    # Relatório.
+    "report.title": "Relatório de sondagem elétrica vertical (Schlumberger)",
+    "report.details": "Dados do levantamento e da aquisição",
+    "report.array": "Arranjo",
+    "report.array_schlumberger": "Schlumberger (MN é a distância total entre M e N)",
+    "report.units": "Unidades de ΔV / I",
+    "report.cv_limit": "Limite de CV",
+    "report.estimator": "Estimador",
+    "report.estimator_mean": "média de ΔV/I das leituras não excluídas",
+    "report.coordinates": "Coordenadas ({crs})",
+    "report.summary": "Resumo",
+    "report.summary_counts": "{positions} em {spacings}: {used} e {excluded}.",
+    "count.reading_used.one": "{n} leitura usada",
+    "count.reading_used.other": "{n} leituras usadas",
+    "count.reading_excluded.one": "{n} excluída",
+    "count.reading_excluded.other": "{n} excluídas",
+    "report.summary_range": "AB/2 de {ab2_min} a {ab2_max} m; ρa de {rho_min} a {rho_max} Ω·m.",
+    "report.summary_warnings.one": "{n} posição com aviso de qualidade.",
+    "report.summary_warnings.other": "{n} posições com aviso de qualidade.",
+    "report.summary_unused.one": "{n} linha da folha não foi usada (veja abaixo).",
+    "report.summary_unused.other": "{n} linhas da folha não foram usadas (veja abaixo).",
+    "report.summary_empty": "A folha ainda não tem leituras completas.",
+    "report.curve": "Curva de SEV",
+    "report.no_curve": "Nenhuma posição tem ρa positivo, então não há curva.",
+    "report.points": "Posições",
+    "report.readings": "Leituras",
+    "report.col_delta_v": "ΔV [{unit}]",
+    "report.col_current": "I [{unit}]",
+    "report.col_r": "R [Ω]",
+    "report.col_rho": "ρa [Ω·m]",
+    "report.col_excluded": "Excluída",
+    "report.col_reason": "Motivo",
+    "report.col_entered": "Digitado em",
+    "report.unused": "Linhas da folha não usadas",
+    "report.col_row": "Linha",
+    "report.col_problem": "Motivo",
+    "report.waiting": "{column}: ainda não digitado",
+    "report.warnings": "Avisos de qualidade",
+    "report.col_warning": "Aviso",
+    "report.col_meaning": "Significado",
+    "report.col_positions": "Posições",
+    "report.history": "Histórico de alterações",
+    "report.no_history": "Nenhuma alteração registrada.",
+    "report.empty_table": "Nenhuma.",
+    "report.methods": "Métodos",
+    "report.method_k": (
+        "Fator geométrico Schlumberger exato: K = π (L² − l²) / (2 l), com L = AB/2 e l = MN/2, "
+        "em metros."
+    ),
+    "report.method_rho": (
+        "Resistividade aparente: ρa = K · média(ΔV_i / I_i) sobre as leituras não excluídas "
+        "da posição, em Ω·m; cada leitura tem o mesmo peso."
+    ),
+    "report.method_se": (
+        "Erro-padrão de ρa: K · s / √n, com s o desvio-padrão amostral de ΔV_i / I_i; só existe "
+        "com n ≥ 2 e é o tamanho das barras de erro. CV = s / |média|, com aviso acima de "
+        "{cv_limit}%."
+    ),
+    "report.method_wide_mn": (
+        "Aviso de MN largo quando (AB/2) / (MN/2) < 4; o K continua exato para qualquer MN menor "
+        "que AB."
+    ),
+    "report.method_entered": (
+        '"Digitado em" é o momento em que ΔV e I da linha ficaram completos na folha digital. '
+        "Quando uma folha de papel é passada a limpo, é o horário da digitação, não o da medição."
+    ),
+    "report.method_recomputed": (
+        "Os valores calculados não são gravados no projeto: este relatório os recalcula a "
+        "partir dos valores digitados, nas unidades indicadas."
+    ),
+    "report.references": "Referências",
+    "report.footer": "GeoResistivity {version} · gerado em {time} · SHA-256 do projeto: {digest}",
+    "report.page": "Página {page} de {pages}",
+    "report.format": "Formato do relatório",
+    "report.download": "Baixar relatório ({format})",
+    "report.panel": "Relatório da SEV",
+    "report.panel_caption": (
+        "Cabeçalho, curva, posições, leituras com exclusões, linhas não usadas, avisos, "
+        "histórico e métodos, no idioma e no formato numérico escolhidos."
+    ),
     # Histórico de alterações.
     "history.title": "Histórico de alterações",
     "history.count.one": "{n} alteração registrada.",
