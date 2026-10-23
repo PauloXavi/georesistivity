@@ -1,6 +1,11 @@
 """Tests for non-mutating plot preparation and scale validation."""
 
+import math
+
 import pytest
+from matplotlib.collections import LineCollection
+from matplotlib.colors import to_rgb
+from matplotlib.container import ErrorbarContainer
 
 from georesistivity import (
     Measurement,
@@ -12,10 +17,12 @@ from georesistivity import (
 )
 from georesistivity.field_sheet import SheetRow, evaluate_sheet
 from georesistivity.plotting import (
+    SoundingErrorBar,
     SoundingFigureLabels,
     SpacingFigureLabels,
     create_sounding_figure,
     find_unplottable_sounding_points,
+    sounding_error_bar,
     sounding_segments,
 )
 from georesistivity.survey import PointResult
@@ -195,3 +202,136 @@ def test_figures_accept_translated_labels() -> None:
         "MN de 0,5 m",
         "MN de 2 m",
     ]
+
+
+# AB/2 = 10 m, MN = 2 m: K = pi * (10^2 - 1^2) / 2 = 49.5 pi m. DeltaV = 30 and 34 mV at 50 mA
+# give R = 0.60 and 0.68 ohm: mean 0.64, s = 0.08 / sqrt(2), standard error s / sqrt(2) = 0.04.
+REPEATED_POSITION = (
+    SheetRow(ab2="10", mn="2", delta_v="30", current="50"),
+    SheetRow(ab2="10", mn="2", delta_v="34", current="50"),
+)
+
+
+def test_error_bar_is_one_standard_error_of_the_mean_scaled_by_k() -> None:
+    (point,) = sounding(*REPEATED_POSITION)
+
+    bar = sounding_error_bar(point)
+
+    assert bar is not None
+    assert bar.ab2_m == 10.0
+    assert bar.apparent_resistivity_ohm_m == pytest.approx(31.68 * math.pi)  # 99.53 ohm.m
+    assert bar.lower_ohm_m == pytest.approx(29.70 * math.pi)  # 0.60 * 49.5 pi
+    assert bar.upper_ohm_m == pytest.approx(33.66 * math.pi)  # 0.68 * 49.5 pi
+    assert not bar.reaches_zero
+
+
+def test_single_or_excluded_readings_have_no_error_bar() -> None:
+    single, excluded, negative = sounding(
+        SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),
+        SheetRow(ab2="1,3", mn="0,5", delta_v="80", current="40"),
+        SheetRow(ab2="1,3", mn="0,5", delta_v="95", current="40", excluded=True, reason="x"),
+        SheetRow(ab2="1,8", mn="0,5", delta_v="-80", current="40"),
+        SheetRow(ab2="1,8", mn="0,5", delta_v="-90", current="40"),
+    )
+
+    assert sounding_error_bar(single) is None
+    assert sounding_error_bar(excluded) is None  # one reading left
+    assert sounding_error_bar(negative) is None  # rho_a < 0 is not on the curve
+
+
+def test_error_bar_reaches_zero_with_readings_of_opposite_signs() -> None:
+    # R = 0.6, -0.4, and 0.1 ohm: mean 0.1, s = 0.5, standard error 0.5 / sqrt(3) > mean.
+    (point,) = sounding(
+        SheetRow(ab2="10", mn="2", delta_v="30", current="50"),
+        SheetRow(ab2="10", mn="2", delta_v="-20", current="50"),
+        SheetRow(ab2="10", mn="2", delta_v="5", current="50"),
+    )
+
+    bar = sounding_error_bar(point)
+
+    assert bar is not None
+    assert bar.lower_ohm_m == pytest.approx((0.1 - 0.5 / math.sqrt(3)) * 49.5 * math.pi)
+    assert bar.reaches_zero
+    assert SoundingErrorBar(1.0, 10.0, 0.0, 20.0).reaches_zero
+
+
+def test_sounding_figure_draws_error_bars_in_the_segment_colour() -> None:
+    points = sounding(*REPEATED_POSITION, SheetRow(ab2="13", mn="2", delta_v="20", current="50"))
+
+    axes = create_sounding_figure(points).axes[0]
+
+    segment = axes.get_lines()[0]
+    containers = [c for c in axes.containers if isinstance(c, ErrorbarContainer)]
+    drawn = [c for c in containers if c.lines[2][0].get_segments()]
+    assert len(containers) == 2  # the bar of 10 m and the neutral legend entry
+    assert len(drawn) == 1
+    (vertical,) = drawn[0].lines[2]
+    ((x_low, y_low), (x_high, y_high)) = vertical.get_segments()[0]
+    assert x_low == x_high == 10.0
+    assert (y_low, y_high) == pytest.approx((29.70 * math.pi, 33.66 * math.pi))
+    assert tuple(vertical.get_colors()[0][:3]) == pytest.approx(
+        to_rgb(segment.get_color()), abs=1e-6
+    )
+    assert axes.get_legend().get_texts()[-1].get_text() == (
+        "\u00b11 standard error of the mean (n \u2265 2)"
+    )
+
+
+def test_sounding_figure_can_leave_out_error_bars() -> None:
+    axes = create_sounding_figure(sounding(*REPEATED_POSITION), error_bars=False).axes[0]
+
+    assert not [c for c in axes.containers if isinstance(c, ErrorbarContainer)]
+    assert [text.get_text() for text in axes.get_legend().get_texts()] == [
+        "MN = 2 m",
+        "Quality warning",  # CV of 8.8% is above the 5% limit
+    ]
+
+
+def test_figure_without_repeated_readings_has_no_error_bar_legend() -> None:
+    axes = create_sounding_figure(sounding(*OVERLAP_SOUNDING)).axes[0]
+
+    assert not [c for c in axes.containers if isinstance(c, ErrorbarContainer)]
+
+
+def test_axes_include_the_ends_of_the_error_bars() -> None:
+    # AB/2 = 320 m, MN = 100 m: K = 999 pi. R = 2.6 and 3.2 ohm give rho_a = 9 104 ohm.m with a
+    # standard error of 0.3 * 999 pi = 942 ohm.m, so the bar ends above 10 000 ohm.m.
+    rows = (
+        SheetRow(ab2="320", mn="100", delta_v="26", current="10"),
+        SheetRow(ab2="320", mn="100", delta_v="32", current="10"),
+    )
+
+    with_bars = create_sounding_figure(sounding(*rows)).axes[0]
+    without_bars = create_sounding_figure(sounding(*rows), error_bars=False).axes[0]
+
+    assert with_bars.get_ylim() == (1.0, 100000.0)
+    assert without_bars.get_ylim() == (1.0, 10000.0)
+
+
+def test_bar_reaching_zero_is_dotted_to_the_bottom_and_circled() -> None:
+    # DeltaV = 0 and 10 mV: R = 0 and 0.2 ohm, mean 0.1 = standard error, so the bar reaches
+    # zero. A CV limit of 1000% leaves the point without warnings.
+    points = evaluate_sheet(
+        (
+            SheetRow(ab2="10", mn="2", delta_v="0", current="50"),
+            SheetRow(ab2="10", mn="2", delta_v="10", current="50"),
+        ),
+        voltage_unit="mV",
+        current_unit="mA",
+        cv_threshold=10.0,
+    ).points
+    assert points[0].warnings == ()
+
+    axes = create_sounding_figure(points).axes[0]
+
+    bottom = axes.get_ylim()[0]
+    dotted = [
+        segment
+        for collection in axes.collections
+        if isinstance(collection, LineCollection)
+        for segment in collection.get_segments()
+        if len(segment) and segment[0][1] == bottom
+    ]
+    assert len(dotted) == 1
+    assert dotted[0][1][1] == pytest.approx(0.1 * 49.5 * math.pi)  # up to the point
+    assert "Quality warning" in [text.get_text() for text in axes.get_legend().get_texts()]
