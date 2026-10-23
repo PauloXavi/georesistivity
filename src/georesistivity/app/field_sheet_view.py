@@ -1,5 +1,6 @@
 """Field-sheet page: the digital Schlumberger sheet with its live curve."""
 
+import datetime as dt
 import math
 from collections.abc import Callable, Sequence
 
@@ -29,7 +30,7 @@ from georesistivity.figures import (
     sounding_labels,
 )
 from georesistivity.formatting import NumberFormat, format_full_precision, format_significant
-from georesistivity.io import sounding_points_to_csv, sounding_readings_to_csv
+from georesistivity.io import history_to_csv, sounding_points_to_csv, sounding_readings_to_csv
 from georesistivity.plotting import (
     create_sounding_figure,
     find_unplottable_sounding_points,
@@ -37,6 +38,12 @@ from georesistivity.plotting import (
     sounding_error_bar,
 )
 from georesistivity.project import SheetTemplate, SurveyInfo
+from georesistivity.sheet_history import (
+    ROW_FIELDS,
+    HistoryEntry,
+    field_text,
+    undoable_entry,
+)
 from georesistivity.storage import list_templates, save_template
 from georesistivity.survey import PointResult
 
@@ -49,7 +56,9 @@ DELTA_V = "ΔV"
 CURRENT = "I"
 EXCLUDED = "Exclude"
 REASON = "Exclusion reason"
-EDITOR_COLUMNS = (MARKER, AB2, MN, DELTA_V, CURRENT, EXCLUDED, REASON)
+ROW_ID = "Row id"
+"""Hidden column that lets the change history follow each row through the editor."""
+EDITOR_COLUMNS = (MARKER, AB2, MN, DELTA_V, CURRENT, EXCLUDED, REASON, ROW_ID)
 
 
 def column_label(column: SheetColumn) -> str:
@@ -68,6 +77,7 @@ def rows_to_dataframe(rows: list[SheetRow]) -> pd.DataFrame:
                 CURRENT: row.current,
                 EXCLUDED: row.excluded,
                 REASON: row.reason,
+                ROW_ID: row.id,
             }
             for row in rows
         ],
@@ -94,6 +104,7 @@ def rows_from_dataframe(dataframe: pd.DataFrame) -> list[SheetRow]:
             current=_text(record[CURRENT]),
             excluded=record[EXCLUDED] is True,
             reason=_text(record[REASON]),
+            id=_text(record.get(ROW_ID)),
         )
         for record in dataframe.to_dict("records")
     ]
@@ -351,7 +362,10 @@ def _render_layout_tools() -> None:
                 if st.button(t("templates.new_confirm"), type="primary", key="sheet_new_confirm"):
                     choice = st.session_state[state.TEMPLATE_CHOICE]
                     template = templates.get(choice)
-                    state.reset_sheet(None if template is None else template.sheet_rows())
+                    if template is None:
+                        state.start_new_sheet(None)
+                    else:
+                        state.start_new_sheet(template.sheet_rows(), template.name)
                     st.rerun()
             with cancel_column:
                 if st.button(t("common.cancel"), key="sheet_new_cancel"):
@@ -381,6 +395,7 @@ def render_field_sheet() -> None:
     st.subheader(t("sheet.title"))
     st.caption(t("sheet.caption"))
     _render_settings()
+    state.record_units()
 
     voltage_unit, current_unit = state.sheet_units()
     edited = st.data_editor(
@@ -404,12 +419,12 @@ def render_field_sheet() -> None:
                 t("sheet.col_exclude"), default=False, width="small"
             ),
             REASON: st.column_config.TextColumn(t("sheet.col_reason")),
+            ROW_ID: None,  # hidden
         },
     )
 
     number_format = state.number_format()
-    rows = rows_from_dataframe(edited)
-    state.set_current_sheet_rows(rows)
+    rows = state.record_sheet(rows_from_dataframe(edited))
     outcome = evaluate_sheet(
         rows,
         voltage_unit=voltage_unit,
@@ -436,4 +451,128 @@ def render_field_sheet() -> None:
             _render_figure_export(points, number_format)
 
     _render_exports(points)
+    _render_history()
     _render_layout_tools()
+
+
+def _value(name: str, value: str) -> str:
+    if name == "excluded":
+        return t("history.yes") if value == "true" else t("history.no")
+    return value if value.strip() else t("history.empty_value")
+
+
+def _row_summary(row: SheetRow) -> str:
+    return " · ".join(
+        f"{t(f'history.field_{name}')} {_value(name, field_text(row, name))}"
+        for name in ROW_FIELDS
+        if field_text(row, name).strip() and field_text(row, name) != "false"
+    )
+
+
+def describe_change(entry: HistoryEntry) -> str:
+    """One line describing ``entry`` in the current language."""
+    if entry.action == "edit" and entry.field is not None:
+        return t(
+            "history.edit",
+            field=t(f"history.field_{entry.field}"),
+            old=_value(entry.field, entry.old),
+            new=_value(entry.field, entry.new),
+        )
+    if entry.action == "delete_row" and entry.old_row is not None:
+        return t("history.delete_row", summary=_row_summary(entry.old_row))
+    if entry.action == "replace_sheet":
+        return t(f"history.replace_{entry.source or 'new_sheet'}", detail=entry.detail)
+    if entry.action == "append_rows":
+        rows = count("count.row", len(entry.row_ids))
+        return t("history.append_rows", rows=rows, detail=entry.detail)
+    if entry.action == "units":
+        return t("history.units", old=entry.old, new=entry.new)
+    return t("history.undo_entry", number=entry.undoes)
+
+
+def _history_row_labels(
+    history: Sequence[HistoryEntry], rows: Sequence[SheetRow]
+) -> dict[str, str]:
+    """Row filter options: every row id in the history, labelled by its row today."""
+    current = {row.id: (number, row) for number, row in enumerate(rows, start=1)}
+    labels: dict[str, str] = {"": t("history.all_rows")}
+    for entry in history:
+        if not entry.row or entry.row in labels:
+            continue
+        if entry.row in current:
+            number, row = current[entry.row]
+            labels[entry.row] = t("history.row_option", number=number, ab2=row.ab2, mn=row.mn)
+        elif entry.old_row is not None:
+            labels[entry.row] = t(
+                "history.deleted_row_option", ab2=entry.old_row.ab2, mn=entry.old_row.mn
+            )
+        else:
+            labels[entry.row] = t("history.row_number_option", number=entry.row_number)
+    return labels
+
+
+def _time_text(moment: str) -> str:
+    return dt.datetime.fromisoformat(moment).strftime(t("history.time_format"))
+
+
+def _render_history() -> None:
+    history = state.history()
+    # A fixed label: Streamlit closes an expander whose label changes.
+    with st.expander(t("history.title"), icon=":material/history:"):
+        error = state.history_message()
+        if error is not None:
+            st.error(error_text(error))
+        if not history:
+            st.caption(t("history.empty"))
+            return
+
+        next_undo = undoable_entry(history)
+        if next_undo is None:
+            undo_text = t("history.nothing_to_undo")
+        else:
+            undo_text = t("history.next_undo", change=describe_change(history[next_undo - 1]))
+        st.caption(f"{count('history.count', len(history))} {undo_text}")
+        st.button(
+            t("history.undo"),
+            icon=":material/undo:",
+            on_click=state.undo_last_change,
+            disabled=next_undo is None,
+            key="history_undo",
+        )
+
+        labels = _history_row_labels(history, state.current_sheet_rows())
+        if st.session_state[state.HISTORY_FILTER] not in labels:
+            st.session_state[state.HISTORY_FILTER] = ""
+        st.selectbox(
+            t("history.filter"),
+            options=tuple(labels),
+            format_func=labels.__getitem__,
+            key=state.HISTORY_FILTER,
+        )
+        chosen = st.session_state[state.HISTORY_FILTER]
+        undone = {entry.undoes for entry in history if entry.action == "undo"}
+        records = []
+        for number in range(len(history), 0, -1):
+            entry = history[number - 1]
+            if chosen and entry.row != chosen:
+                continue
+            change = describe_change(entry)
+            records.append(
+                {
+                    t("history.col_number"): number,
+                    t("history.col_time"): _time_text(entry.at),
+                    t("history.col_row"): "" if entry.row_number is None else entry.row_number,
+                    t("history.col_change"): (
+                        t("history.undone", change=change) if number in undone else change
+                    ),
+                }
+            )
+        st.dataframe(pd.DataFrame(records), hide_index=True, width="stretch")
+        st.download_button(
+            t("history.export"),
+            data=history_to_csv(history, dialect=state.csv_dialect()),
+            file_name="georesistivity_sheet_history.csv",
+            mime="text/csv",
+            icon=":material/download:",
+            key="history_export",
+        )

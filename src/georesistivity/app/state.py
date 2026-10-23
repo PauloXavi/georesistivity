@@ -16,6 +16,16 @@ from georesistivity.messages import GeoValueError
 from georesistivity.models import MeasurementResult
 from georesistivity.project import Project, SheetSettings, SurveyInfo
 from georesistivity.services import GeometricFactorMode, MeasurementInput
+from georesistivity.sheet_history import (
+    HistoryEntry,
+    append_entry,
+    now_text,
+    reconcile_sheet,
+    replacement_entry,
+    undo_last,
+    units_entry,
+    with_ids,
+)
 from georesistivity.stacking import DEFAULT_CV_THRESHOLD
 from georesistivity.storage import new_session_id
 
@@ -52,6 +62,10 @@ FIGURE_SIZE = "figure_size"
 FIGURE_DECADE_MM = "figure_decade_mm"
 FIGURE_TITLE = "figure_title_with_survey"
 SHEET_CONFIRM_NEW = "sheet_confirm_new"
+SHEET_HISTORY = "sheet_history"
+LOGGED_UNITS = "sheet_logged_units"
+HISTORY_MESSAGE = "history_message"
+HISTORY_FILTER = "history_row_filter"
 
 SESSION_ID = "session_id"
 CURRENT_SHEET_ROWS = "current_sheet_rows"
@@ -122,7 +136,11 @@ def initialize() -> None:
     st.session_state.setdefault(NUMBER_FORMAT, "pt-BR")
     st.session_state.setdefault(CSV_DIALECT, "standard")
     st.session_state.setdefault(K_MODE, "external")
-    st.session_state.setdefault(SHEET_ROWS, template_rows())
+    st.session_state.setdefault(SHEET_ROWS, list(with_ids(template_rows())))
+    st.session_state.setdefault(SHEET_HISTORY, [])
+    st.session_state.setdefault(LOGGED_UNITS, ("mV", "mA"))
+    st.session_state.setdefault(HISTORY_MESSAGE, None)
+    st.session_state.setdefault(HISTORY_FILTER, "")
     st.session_state.setdefault(SHEET_VERSION, 0)
     st.session_state.setdefault(SHEET_VOLTAGE_UNIT, "mV")
     st.session_state.setdefault(SHEET_CURRENT_UNIT, "mA")
@@ -238,19 +256,86 @@ def sheet_editor_key() -> str:
     return f"sheet_editor_{st.session_state[SHEET_VERSION]}"
 
 
-def reset_sheet(rows: Sequence[SheetRow] | None = None) -> None:
-    """Start a new sheet from ``rows`` (the standard layout by default)."""
-    st.session_state[SHEET_ROWS] = (
-        list(rows) if rows is not None else template_rows(number_format())
-    )
+def reset_sheet(
+    rows: Sequence[SheetRow] | None = None, *, entry: HistoryEntry | None = None
+) -> None:
+    """Start the editor again from ``rows`` (the standard layout by default).
+
+    ``entry`` is added to the history first, when the reset is a recorded change.
+    """
+    start = rows if rows is not None else template_rows(number_format())
+    st.session_state[SHEET_ROWS] = list(with_ids(start))
     st.session_state[SHEET_VERSION] = cast(int, st.session_state[SHEET_VERSION]) + 1
     st.session_state[SHEET_CONFIRM_NEW] = False
     st.session_state[CURRENT_SHEET_ROWS] = None
+    if entry is not None:
+        history().append(entry)
 
 
 def set_current_sheet_rows(rows: list[SheetRow]) -> None:
     """Remember the rows shown by the editor in this run, for saving."""
     st.session_state[CURRENT_SHEET_ROWS] = rows
+
+
+def history() -> list[HistoryEntry]:
+    """Change history of the field sheet, oldest first."""
+    return cast(list[HistoryEntry], st.session_state[SHEET_HISTORY])
+
+
+def record_sheet(edited: Sequence[SheetRow]) -> list[SheetRow]:
+    """Follow the rows returned by the editor, record their changes, and keep them for saving."""
+    update = reconcile_sheet(current_sheet_rows(), edited, now=now_text())
+    history().extend(update.entries)
+    rows = list(update.rows)
+    set_current_sheet_rows(rows)
+    return rows
+
+
+def record_units() -> None:
+    """Record a change of the DeltaV or I unit since the last run."""
+    units = sheet_units()
+    logged = cast(tuple[str, str], st.session_state[LOGGED_UNITS])
+    if units != logged:
+        history().append(units_entry(logged, units, now=now_text()))
+        st.session_state[LOGGED_UNITS] = units
+
+
+def _set_units(voltage_unit: str, current_unit: str) -> None:
+    st.session_state[SHEET_VOLTAGE_UNIT] = voltage_unit
+    st.session_state[SHEET_CURRENT_UNIT] = current_unit
+    st.session_state[LOGGED_UNITS] = (voltage_unit, current_unit)
+
+
+def start_new_sheet(rows: Sequence[SheetRow] | None, template_name: str = "") -> None:
+    """Replace the sheet with an empty layout, recording the sheet it replaces."""
+    entry = replacement_entry(
+        current_sheet_rows(),
+        sheet_units(),
+        source="template" if template_name else "new_sheet",
+        detail=template_name,
+        now=now_text(),
+    )
+    reset_sheet(rows, entry=entry)
+
+
+def undo_last_change() -> None:
+    """Undo-button callback: revert the latest change that has not been undone."""
+    try:
+        result = undo_last(current_sheet_rows(), sheet_units(), history(), now=now_text())
+    except GeoValueError as exc:
+        st.session_state[HISTORY_MESSAGE] = exc
+        return
+    if result is None:
+        return
+    _set_units(*result.units)
+    reset_sheet(result.rows, entry=result.entry)
+
+
+def history_message() -> GeoValueError | None:
+    """Error of the last undo, shown once."""
+    message = cast(GeoValueError | None, st.session_state[HISTORY_MESSAGE])
+    st.session_state[HISTORY_MESSAGE] = None
+    return message
 
 
 def current_sheet_rows() -> list[SheetRow]:
@@ -334,6 +419,7 @@ def current_project() -> Project:
         ),
         sheet_rows=tuple(current_sheet_rows()),
         measurements=tuple(result.measurement for result in measurements()),
+        history=tuple(history()),
     )
 
 
@@ -358,10 +444,10 @@ def apply_project(project: Project) -> None:
         state[key] = getattr(project.survey, name)
     for name, key in META_OPTIONAL_FIELDS.items():
         state[key] = getattr(project.survey, name)
-    state[SHEET_VOLTAGE_UNIT] = settings.voltage_unit
-    state[SHEET_CURRENT_UNIT] = settings.current_unit
+    _set_units(settings.voltage_unit, settings.current_unit)
     state[SHEET_CV_LIMIT] = settings.cv_limit_percent
     reset_sheet(project.sheet_rows)
+    state[SHEET_HISTORY] = list(project.history)
     state[MEASUREMENTS] = results
     state[LAST_RESULT] = results[-1] if results else None
     state[CONFIRM_CLEAR] = False
@@ -436,13 +522,28 @@ def sheet_has_readings() -> bool:
     return any(row.delta_v.strip() or row.current.strip() for row in current_sheet_rows())
 
 
-def replace_sheet(rows: Sequence[SheetRow], voltage_unit: str, current_unit: str) -> None:
-    """Start the sheet over with ``rows`` and their units. Only valid inside a callback."""
-    st.session_state[SHEET_VOLTAGE_UNIT] = voltage_unit
-    st.session_state[SHEET_CURRENT_UNIT] = current_unit
-    reset_sheet(rows)
+def replace_sheet(
+    rows: Sequence[SheetRow], voltage_unit: str, current_unit: str, *, file_name: str = ""
+) -> None:
+    """Start the sheet over with imported ``rows`` and their units, recording the old sheet.
+
+    Only valid inside a callback.
+    """
+    entry = replacement_entry(
+        current_sheet_rows(), sheet_units(), source="import", detail=file_name, now=now_text()
+    )
+    _set_units(voltage_unit, current_unit)
+    reset_sheet(rows, entry=entry)
 
 
-def append_to_sheet(rows: Sequence[SheetRow]) -> None:
-    """Add ``rows`` after the current sheet rows. Only valid inside a callback."""
-    reset_sheet([*current_sheet_rows(), *rows])
+def append_to_sheet(rows: Sequence[SheetRow], *, file_name: str = "") -> None:
+    """Add imported ``rows`` after the current sheet rows. Only valid inside a callback.
+
+    Their reading times are set on the next run, like those of rows typed in the editor.
+    """
+    current = current_sheet_rows()
+    combined = with_ids([*current, *rows])
+    entry = append_entry(
+        combined[len(current) :], source="import", detail=file_name, now=now_text()
+    )
+    reset_sheet(combined, entry=entry)

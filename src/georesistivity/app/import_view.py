@@ -163,9 +163,9 @@ def apply_import() -> None:
         ):
             state.set_import_message(("error", t("import.units_differ")))
             return
-        state.append_to_sheet(result.rows)
+        state.append_to_sheet(result.rows, file_name=name)
     else:
-        state.replace_sheet(result.rows, result.voltage_unit, result.current_unit)
+        state.replace_sheet(result.rows, result.voltage_unit, result.current_unit, file_name=name)
     imported_rows = count("count.row", len(result.rows))
     message = t_for(len(result.rows), "import.done_sheet", rows=imported_rows, name=name)
     state.set_import_message(("success", message))

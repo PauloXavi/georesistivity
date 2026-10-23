@@ -27,6 +27,7 @@ from georesistivity.project import (
     project_from_json,
     project_to_json,
 )
+from georesistivity.sheet_history import HistoryEntry
 from georesistivity.storage import write_autosave
 
 COMPATIBILITY_SCRIPT = Path(__file__).resolve().parents[1] / "app" / "app.py"
@@ -471,7 +472,10 @@ def test_new_sheet_requires_confirmation() -> None:
 
     assert len(app_test.session_state["sheet_rows"]) == 45
     assert app_test.session_state["sheet_version"] == 1
-    assert [frame.key for frame in app_test.dataframe] == ["sheet_editor_1"]
+    assert [frame.key for frame in app_test.dataframe if frame.key] == ["sheet_editor_1"]
+    (entry,) = app_test.session_state["sheet_history"]
+    assert (entry.action, entry.source) == ("replace_sheet", "new_sheet")
+    assert [row.delta_v for row in entry.old_rows] == ["80"]
 
 
 def test_rows_from_editor_treat_missing_cells_as_blank() -> None:
@@ -1088,3 +1092,191 @@ def test_import_page_in_portuguese() -> None:
     ]
     next(b for b in app_test.button if b.label == "Importar 2 linhas").click().run()
     assert "2 linhas de dados.csv importadas para a aba Folha de campo." in markdown_text(app_test)
+
+
+HISTORY_TIME = "2026-10-23T09:00:00-03:00"
+
+
+def history_captions(app_test: AppTest) -> list[str]:
+    return [str(c.value) for c in app_test.caption if "recorded" in str(c.value)]
+
+
+def history_table(app_test: AppTest) -> pd.DataFrame:
+    return next(frame.value for frame in app_test.dataframe if "Change" in frame.value.columns)
+
+
+def test_history_starts_empty() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+
+    assert any(str(c.value).startswith("No changes recorded.") for c in app_test.caption)
+    assert app_test.session_state["sheet_history"] == []
+    (row,) = app_test.session_state["current_sheet_rows"]
+    assert row.id  # every row gets an id
+    assert row.entered_at  # and the time its reading became complete
+
+
+def test_changing_the_units_is_recorded_and_can_be_undone() -> None:
+    app_test = sheet_app(SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"))
+
+    app_test.selectbox(key="sheet_voltage_unit").set_value("V").run()
+
+    (entry,) = app_test.session_state["sheet_history"]
+    assert (entry.action, entry.old, entry.new) == ("units", "mV / mA", "V / mA")
+    assert history_captions(app_test) == [
+        "1 change recorded. Undo reverts: Units of ΔV / I: mV / mA → V / mA"
+    ]
+
+    app_test.button(key="history_undo").click().run()
+
+    assert app_test.session_state["sheet_voltage_unit"] == "mV"
+    assert [e.action for e in app_test.session_state["sheet_history"]] == ["units", "undo"]
+    assert history_captions(app_test) == ["2 changes recorded. Every change has been undone."]
+    assert app_test.button(key="history_undo").disabled
+
+
+def test_undo_reverts_a_corrected_reading() -> None:
+    app_test = new_app()
+    app_test.session_state["sheet_rows"] = [
+        SheetRow(ab2="1", mn="0,5", delta_v="82", current="40", id="ra", entered_at=HISTORY_TIME)
+    ]
+    app_test.session_state["sheet_history"] = [
+        HistoryEntry(
+            HISTORY_TIME, "edit", row="ra", row_number=1, field="delta_v", old="80", new="82"
+        )
+    ]
+    app_test.run()
+
+    app_test.button(key="history_undo").click().run()
+
+    (row,) = app_test.session_state["sheet_rows"]
+    assert (row.id, row.delta_v, row.entered_at) == ("ra", "80", HISTORY_TIME)
+    assert app_test.session_state["sheet_version"] == 1
+    table = history_table(app_test)
+    assert table["Change"].tolist() == ["Undid entry no. 1", "ΔV: 80 → 82 (undone)"]
+
+
+def test_undo_of_a_change_whose_row_is_gone_shows_an_error() -> None:
+    app_test = new_app()
+    app_test.session_state["sheet_rows"] = [SheetRow(ab2="1", mn="0,5", id="ra")]
+    app_test.session_state["sheet_history"] = [
+        HistoryEntry(HISTORY_TIME, "edit", row="zz", row_number=4, field="ab2", old="1", new="2")
+    ]
+    app_test.run()
+
+    app_test.button(key="history_undo").click().run()
+
+    assert "the row of this change is no longer on the sheet" in error_text(app_test)
+    assert len(app_test.session_state["sheet_history"]) == 1
+
+
+def test_history_table_describes_every_kind_of_change_and_filters_by_row() -> None:
+    deleted = SheetRow(ab2="1,8", mn="0,5", delta_v="9", current="50", id="rc")
+    app_test = new_app()
+    app_test.session_state["sheet_rows"] = [
+        SheetRow(ab2="1", mn="0,5", delta_v="82", current="40", id="ra"),
+        SheetRow(ab2="1,3", mn="0,5", id="rb"),
+    ]
+    app_test.session_state["sheet_history"] = [
+        HistoryEntry(
+            HISTORY_TIME, "edit", row="ra", row_number=1, field="delta_v", old="80", new="82"
+        ),
+        HistoryEntry(
+            HISTORY_TIME, "edit", row="ra", row_number=1, field="excluded", old="false", new="true"
+        ),
+        HistoryEntry(
+            HISTORY_TIME, "edit", row="rb", row_number=2, field="marker", old="VD", new=""
+        ),
+        HistoryEntry(HISTORY_TIME, "delete_row", row="rc", row_number=3, old_row=deleted),
+        HistoryEntry(
+            HISTORY_TIME,
+            "replace_sheet",
+            source="import",
+            detail="a.csv",
+            old_rows=(deleted,),
+            old_units=("V", "A"),
+        ),
+        HistoryEntry(
+            HISTORY_TIME,
+            "replace_sheet",
+            source="template",
+            detail="Padrao 2",
+            old_rows=(deleted,),
+            old_units=("V", "A"),
+        ),
+        HistoryEntry(HISTORY_TIME, "append_rows", source="import", detail="b.csv", row_ids=("rb",)),
+    ]
+    app_test.run()
+
+    table = history_table(app_test)
+    assert table["Change"].tolist() == [
+        "1 row added by the import of b.csv",
+        "Sheet replaced by the template Padrao 2",
+        "Sheet replaced by the import of a.csv",
+        "Row deleted (AB/2 1,8 · MN 0,5 · ΔV 9 · I 50)",
+        "Marker: VD → (empty)",
+        "Exclude: no → yes",
+        "ΔV: 80 → 82",
+    ]
+    assert table["Time"].tolist()[0] == "2026-10-23 09:00:00"
+    assert table["No."].tolist() == [7, 6, 5, 4, 3, 2, 1]
+
+    labels = app_test.selectbox(key="history_row_filter").options
+    assert labels == [
+        "All changes",
+        "Row 1: AB/2 1, MN 0,5",
+        "Row 2: AB/2 1,3, MN 0,5",
+        "Deleted row: AB/2 1,8, MN 0,5",
+    ]
+    app_test.selectbox(key="history_row_filter").set_value("ra").run()
+
+    assert history_table(app_test)["No."].tolist() == [2, 1]
+
+
+def test_importing_over_a_sheet_with_readings_records_the_old_sheet() -> None:
+    seed = [SheetRow(ab2="10", mn="2", delta_v="80", current="40")]
+    app_test = import_app(SHEET_CSV, seed_rows=seed)
+
+    next(b for b in app_test.button if b.label == "Import 2 rows").click().run()
+
+    (entry,) = app_test.session_state["sheet_history"]
+    assert (entry.action, entry.source, entry.detail) == ("replace_sheet", "import", "dados.csv")
+    assert entry.old_rows == tuple(seed)
+
+
+def test_adding_imported_rows_records_their_ids() -> None:
+    app_test = import_app(SHEET_CSV, seed_rows=[SheetRow(ab2="10", mn="2")])
+
+    by_label(app_test.radio, "How").set_value("append").run()
+    next(b for b in app_test.button if b.label == "Import 2 rows").click().run()
+
+    (entry,) = app_test.session_state["sheet_history"]
+    rows = app_test.session_state["sheet_rows"]
+    assert (entry.action, entry.detail) == ("append_rows", "dados.csv")
+    assert entry.row_ids == tuple(row.id for row in rows[1:])
+
+
+def test_history_filter_of_a_row_no_longer_listed_falls_back_to_all() -> None:
+    app_test = new_app()
+    app_test.session_state["sheet_history"] = [
+        HistoryEntry(HISTORY_TIME, "units", old="V / A", new="mV / mA", old_units=("V", "A"))
+    ]
+    app_test.session_state["history_row_filter"] = "gone"
+    app_test.run()
+
+    assert app_test.selectbox(key="history_row_filter").value == ""
+
+
+def undo_script() -> None:
+    from georesistivity.app import state
+
+    state.initialize()
+    state.undo_last_change()
+
+
+def test_undo_with_nothing_to_undo_changes_nothing() -> None:
+    app_test = new_app_from(undo_script)
+    app_test.run()
+
+    assert not app_test.exception
+    assert app_test.session_state["sheet_history"] == []
+    assert app_test.session_state["sheet_version"] == 0
