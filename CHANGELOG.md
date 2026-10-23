@@ -8,6 +8,11 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
 
 ## [Unreleased]
 
+### Fixed
+
+- CI: the quality job upgrades setuptools before the dependency audit, so a vulnerable
+  setuptools preinstalled on the runner no longer fails it.
+
 ## [0.4.0] - 2026-10-23
 
 ### Added
