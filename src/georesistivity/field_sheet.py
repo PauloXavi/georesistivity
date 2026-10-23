@@ -32,7 +32,11 @@ RowState = Literal["blank", "incomplete", "valid", "excluded", "invalid"]
 
 @dataclass(frozen=True, slots=True)
 class SheetRow:
-    """One row of the field sheet, exactly as typed."""
+    """One row of the field sheet, exactly as typed.
+
+    ``id`` and ``entered_at`` are kept by the program, not typed, and do not take part in
+    comparisons: two rows are equal when their typed content is equal.
+    """
 
     marker: str = ""
     ab2: str = ""
@@ -41,6 +45,26 @@ class SheetRow:
     current: str = ""
     excluded: bool = False
     reason: str = ""
+    id: str = field(default="", compare=False)
+    """Stable identifier of the row, used by the change history."""
+    entered_at: str = field(default="", compare=False)
+    """ISO 8601 time with offset at which DeltaV and I were first both filled in (D-14)."""
+
+    def content(self) -> tuple[str, str, str, str, str, bool, str]:
+        """The typed values, in column order."""
+        return (
+            self.marker,
+            self.ab2,
+            self.mn,
+            self.delta_v,
+            self.current,
+            self.excluded,
+            self.reason,
+        )
+
+    def has_reading(self) -> bool:
+        """Whether both DeltaV and I are filled in."""
+        return bool(self.delta_v.strip() and self.current.strip())
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +179,7 @@ def _evaluate_row(
         current_unit=current_unit,
         excluded=row.excluded,
         exclusion_reason=reason or None,
+        entered_at=row.entered_at or None,
     )
     try:
         evaluate_reading(reading)

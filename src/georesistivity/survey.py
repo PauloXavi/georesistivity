@@ -29,6 +29,8 @@ class Reading:
     current_unit: str
     excluded: bool = False
     exclusion_reason: str | None = None
+    entered_at: str | None = None
+    """ISO 8601 time at which the reading was first complete on the field sheet."""
 
     def __post_init__(self) -> None:
         if self.excluded and not (self.exclusion_reason and self.exclusion_reason.strip()):
