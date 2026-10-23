@@ -21,6 +21,7 @@ from georesistivity.plotting import (
     SoundingFigureLabels,
     SpacingFigureLabels,
     create_sounding_figure,
+    draw_sounding_curve,
     find_unplottable_sounding_points,
     sounding_axis_limits,
     sounding_decades,
@@ -400,3 +401,13 @@ def test_axis_limits_need_a_plottable_point() -> None:
 
     with pytest.raises(ValueError, match="positive apparent resistivity"):
         sounding_axis_limits(points)
+
+
+def test_drawing_on_existing_axes_needs_a_plottable_point() -> None:
+    from matplotlib.figure import Figure
+
+    axes = Figure().subplots()
+    points = sounding(SheetRow(ab2="1", mn="0,5", delta_v="-80", current="40"))
+
+    with pytest.raises(ValueError, match="positive apparent resistivity"):
+        draw_sounding_curve(axes, points)

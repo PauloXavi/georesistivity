@@ -322,17 +322,47 @@ def create_sounding_figure(
     if not segments:
         raise ValueError("at least one point with positive apparent resistivity is required")
 
-    bars = _segment_error_bars(segments) if error_bars else {}
-    all_bars = [bar for segment_bars in bars.values() for bar in segment_bars]
-    x_limits, y_limits = _limits(segments, all_bars)
-
     texts = labels or SoundingFigureLabels()
     if decade_mm is None:
         figure = Figure(figsize=(7.0, 7.0), layout="constrained")
         axes = figure.subplots()
     else:
+        x_limits, y_limits = sounding_axis_limits(points, error_bars=error_bars)
         title_lines = texts.title.count("\n") + 1
         figure, axes = _scaled_axes(x_limits, y_limits, decade_mm, title_lines)
+    draw_sounding_curve(
+        axes,
+        points,
+        number_format=number_format,
+        labels=texts,
+        error_bars=error_bars,
+        equal_aspect=decade_mm is None,  # a scaled plot already has equal decades by its size
+    )
+    return figure
+
+
+def draw_sounding_curve(
+    axes: Axes,
+    points: Sequence[PointResult],
+    *,
+    number_format: NumberFormat = "pt-BR",
+    labels: SoundingFigureLabels | None = None,
+    error_bars: bool = True,
+    equal_aspect: bool = True,
+) -> None:
+    """Draw the VES curve of :func:`create_sounding_figure` on existing ``axes``.
+
+    With ``equal_aspect``, the axes box is adjusted so that a decade has the same length on
+    both axes; otherwise the caller sizes the box.
+    """
+    segments = sounding_segments(points)
+    if not segments:
+        raise ValueError("at least one point with positive apparent resistivity is required")
+    texts = labels or SoundingFigureLabels()
+    bars = _segment_error_bars(segments) if error_bars else {}
+    all_bars = [bar for segment_bars in bars.values() for bar in segment_bars]
+    x_limits, y_limits = _limits(segments, all_bars)
+
     flagged_ab2: list[float] = []
     flagged_rho: list[float] = []
     for mn_m, segment in segments.items():
@@ -377,11 +407,10 @@ def create_sounding_figure(
     axes.set_yscale("log")
     axes.set_xlim(*x_limits)
     axes.set_ylim(*y_limits)
-    if decade_mm is None:
-        axes.set_aspect("equal")  # a scaled plot already has equal decades by its size
+    if equal_aspect:
+        axes.set_aspect("equal")
     axes.set_title(texts.title)
     axes.set_xlabel(texts.x_axis)
     axes.set_ylabel(texts.y_axis)
     axes.grid(visible=True, which="both", alpha=0.25, linewidth=0.7)
     axes.legend(loc="best", fontsize="small")
-    return figure
