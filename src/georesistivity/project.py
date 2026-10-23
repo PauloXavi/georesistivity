@@ -1,7 +1,9 @@
-"""GeoResistivity project files (``*.geores.json``), schema version 1.
+"""GeoResistivity project files (``*.geores.json``), schema version 2.
 
 A project holds the survey details, the field sheet exactly as typed (including blank or
-incomplete rows, so that saving never loses work in progress), and the single measurements.
+incomplete rows, so that saving never loses work in progress), its change history, and the
+single measurements. Version 2 added the id and reading time of each row and the history;
+version 1 files are migrated when opened.
 Calculated values are not stored: they are recomputed from the original values when the
 project is opened, which keeps the original values as the only source of truth.
 
@@ -22,10 +24,17 @@ from typing import Any, TypeVar
 from georesistivity.field_sheet import SheetRow, template_rows
 from georesistivity.messages import GeoValueError, Problem, problem_of
 from georesistivity.models import Measurement
+from georesistivity.sheet_history import (
+    HISTORY_ACTIONS,
+    HISTORY_SOURCES,
+    ROW_FIELDS,
+    HistoryEntry,
+    with_ids,
+)
 from georesistivity.stacking import DEFAULT_CV_THRESHOLD
 
 SCHEMA = "georesistivity.project"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 FILE_SUFFIX = ".geores.json"
 DEFAULT_CRS = "EPSG:4326"
 
@@ -100,6 +109,7 @@ class Project:
     sheet_settings: SheetSettings = field(default_factory=SheetSettings)
     sheet_rows: tuple[SheetRow, ...] = field(default_factory=lambda: tuple(template_rows()))
     measurements: tuple[Measurement, ...] = ()
+    history: tuple[HistoryEntry, ...] = ()
 
     def reading_count(self) -> int:
         """Number of field-sheet rows with DeltaV or I typed."""
@@ -158,6 +168,36 @@ def project_to_dict(project: Project, *, saved_at: dt.datetime | None = None) ->
         "rows": [dataclasses.asdict(row) for row in project.sheet_rows],
     }
     data["measurements"] = [dataclasses.asdict(m) for m in project.measurements]
+    data["history"] = [_entry_to_dict(entry) for entry in project.history]
+    return data
+
+
+def _row_to_dict(row: SheetRow) -> dict[str, Any]:
+    return dataclasses.asdict(row)
+
+
+def _entry_to_dict(entry: HistoryEntry) -> dict[str, Any]:
+    """The fields of ``entry`` that differ from their defaults."""
+    data: dict[str, Any] = {"at": entry.at, "action": entry.action}
+    if entry.row:
+        data["row"] = entry.row
+    if entry.row_number is not None:
+        data["row_number"] = entry.row_number
+    if entry.field is not None:
+        data["field"] = entry.field
+    for name in ("old", "new", "source", "detail"):
+        if getattr(entry, name):
+            data[name] = getattr(entry, name)
+    if entry.old_row is not None:
+        data["old_row"] = _row_to_dict(entry.old_row)
+    if entry.old_rows:
+        data["old_rows"] = [_row_to_dict(row) for row in entry.old_rows]
+    if entry.old_units is not None:
+        data["old_units"] = list(entry.old_units)
+    if entry.row_ids:
+        data["row_ids"] = list(entry.row_ids)
+    if entry.undoes is not None:
+        data["undoes"] = entry.undoes
     return data
 
 
@@ -271,22 +311,111 @@ def _read_sheet(value: object) -> tuple[SheetSettings, tuple[SheetRow, ...]]:
         settings["cv_limit_percent"] = limit
 
     rows_value = _typed(data["rows"], f"{path}.rows", list, "project.must_be_list")
-    rows = []
-    for index, row_value in enumerate(rows_value):
-        row_path = f"{path}.rows[{index}]"
-        row = _expect_object(row_value, row_path)
-        _check_keys(row, row_path, _ROW_KEYS, set())
-        values: dict[str, Any] = {
-            name: _text(row[name], f"{row_path}.{name}")
-            for name in ("marker", "ab2", "mn", "delta_v", "current", "reason")
-            if name in row
-        }
-        if "excluded" in row:
-            values["excluded"] = _typed(
-                row["excluded"], f"{row_path}.excluded", bool, "project.must_be_flag"
+    rows = [
+        _read_row(row_value, f"{path}.rows[{index}]") for index, row_value in enumerate(rows_value)
+    ]
+    seen: set[str] = set()
+    for index, row in enumerate(rows):
+        if row.id and row.id in seen:
+            raise ProjectFormatError(
+                f"{path}.rows[{index}].id", Problem("project.duplicate_row_id", {"id": row.id})
             )
-        rows.append(SheetRow(**values))
-    return SheetSettings(**settings), tuple(rows)
+        seen.add(row.id)
+    return SheetSettings(**settings), with_ids(rows)
+
+
+def _check_time(text: str, path: str) -> str:
+    try:
+        moment = dt.datetime.fromisoformat(text)
+    except ValueError:
+        raise ProjectFormatError(path, Problem("project.datetime")) from None
+    if moment.tzinfo is None:
+        raise ProjectFormatError(path, Problem("project.datetime"))
+    return text
+
+
+def _read_row(value: object, path: str) -> SheetRow:
+    row = _expect_object(value, path)
+    _check_keys(row, path, _ROW_KEYS, set())
+    values: dict[str, Any] = {
+        name: _text(row[name], f"{path}.{name}")
+        for name in ("marker", "ab2", "mn", "delta_v", "current", "reason", "id", "entered_at")
+        if name in row
+    }
+    if values.get("entered_at"):
+        _check_time(values["entered_at"], f"{path}.entered_at")
+    if "excluded" in row:
+        values["excluded"] = _typed(
+            row["excluded"], f"{path}.excluded", bool, "project.must_be_flag"
+        )
+    return SheetRow(**values)
+
+
+_ENTRY_KEYS = {field.name for field in dataclasses.fields(HistoryEntry)}
+
+
+def _choice(value: object, path: str, choices: tuple[str, ...]) -> str:
+    text = _text(value, path)
+    if text not in choices:
+        raise ProjectFormatError(
+            path, Problem("project.choice", {"choices": ", ".join(c for c in choices if c)})
+        )
+    return text
+
+
+def _read_history(value: object) -> tuple[HistoryEntry, ...]:
+    path = "history"
+    items = _typed(value, path, list, "project.must_be_list")
+    entries = []
+    for index, item in enumerate(items):
+        entry_path = f"{path}[{index}]"
+        data = _expect_object(item, entry_path)
+        _check_keys(data, entry_path, _ENTRY_KEYS, {"at", "action"})
+        values: dict[str, Any] = {
+            "at": _check_time(_text(data["at"], f"{entry_path}.at"), f"{entry_path}.at"),
+            "action": _choice(data["action"], f"{entry_path}.action", HISTORY_ACTIONS),
+        }
+        for name in ("row", "old", "new", "detail"):
+            if name in data:
+                values[name] = _text(data[name], f"{entry_path}.{name}")
+        if "source" in data:
+            values["source"] = _choice(data["source"], f"{entry_path}.source", HISTORY_SOURCES)
+        if "field" in data:
+            values["field"] = _choice(data["field"], f"{entry_path}.field", ROW_FIELDS)
+        for name, upper in (("row_number", None), ("undoes", index)):
+            if name in data:
+                number = _typed(data[name], f"{entry_path}.{name}", int, "project.must_be_number")
+                if number < 1 or (upper is not None and number > upper):
+                    raise ProjectFormatError(
+                        f"{entry_path}.{name}", Problem("project.entry_number")
+                    )
+                values[name] = number
+        if "old_row" in data:
+            values["old_row"] = _read_row(data["old_row"], f"{entry_path}.old_row")
+        if "old_rows" in data:
+            rows = _typed(data["old_rows"], f"{entry_path}.old_rows", list, "project.must_be_list")
+            values["old_rows"] = tuple(
+                _read_row(row, f"{entry_path}.old_rows[{number}]")
+                for number, row in enumerate(rows)
+            )
+        if "old_units" in data:
+            units = _typed(
+                data["old_units"], f"{entry_path}.old_units", list, "project.must_be_list"
+            )
+            if len(units) != 2:
+                raise ProjectFormatError(f"{entry_path}.old_units", Problem("project.units_pair"))
+            values["old_units"] = tuple(
+                _text(unit, f"{entry_path}.old_units[{number}]")
+                for number, unit in enumerate(units)
+            )
+        if "row_ids" in data:
+            ids = _typed(data["row_ids"], f"{entry_path}.row_ids", list, "project.must_be_list")
+            values["row_ids"] = tuple(
+                _text(row_id, f"{entry_path}.row_ids[{number}]")
+                for number, row_id in enumerate(ids)
+            )
+        entries.append(HistoryEntry(**values))
+    return tuple(entries)
 
 
 def _read_measurements(value: object) -> tuple[Measurement, ...]:
@@ -317,8 +446,13 @@ def _build_measurement(path: str, values: dict[str, Any]) -> Measurement:
     return _build(path, lambda: Measurement(**values))
 
 
+def _migrate_1_to_2(document: dict[str, Any]) -> dict[str, Any]:
+    """Version 2 adds row ids and reading times (filled in on reading) and the history."""
+    return {**document, "schema_version": 2, "history": []}
+
+
 # Migrations from older schema versions: version -> function returning the next version.
-_MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+_MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {1: _migrate_1_to_2}
 
 
 def project_from_dict(data: object) -> Project:
@@ -341,14 +475,28 @@ def project_from_dict(data: object) -> Project:
     _check_keys(
         document,
         "",
-        {"schema", "schema_version", "created_with", "saved_at", "survey", "sheet", "measurements"},
+        {
+            "schema",
+            "schema_version",
+            "created_with",
+            "saved_at",
+            "survey",
+            "sheet",
+            "measurements",
+            "history",
+        },
         {"schema", "schema_version", "sheet"},
     )
     survey = _read_survey(document.get("survey", {}))
     settings, rows = _read_sheet(document["sheet"])
     measurements = _read_measurements(document.get("measurements", []))
+    history = _read_history(document.get("history", []))
     return Project(
-        survey=survey, sheet_settings=settings, sheet_rows=rows, measurements=measurements
+        survey=survey,
+        sheet_settings=settings,
+        sheet_rows=rows,
+        measurements=measurements,
+        history=history,
     )
 
 

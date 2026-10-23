@@ -1,7 +1,8 @@
-"""Tests for GeoResistivity project files (schema version 1)."""
+"""Tests for GeoResistivity project files (schema version 2, and migration from 1)."""
 
 import datetime as dt
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,6 +23,7 @@ from georesistivity.project import (
     project_to_json,
     saved_at,
 )
+from georesistivity.sheet_history import HistoryEntry
 
 SURVEY = SurveyInfo(
     name="Synthetic sounding",
@@ -84,7 +86,7 @@ def test_document_shape() -> None:
     data = project_to_dict(full_project(), saved_at=stamp)
 
     assert data["schema"] == SCHEMA
-    assert data["schema_version"] == SCHEMA_VERSION == 1
+    assert data["schema_version"] == SCHEMA_VERSION == 2
     assert data["created_with"] == f"georesistivity {__version__}"
     assert data["saved_at"] == "2026-10-22T18:30:05-03:00"
     assert data["survey"]["date"] == "2026-10-22"
@@ -98,8 +100,11 @@ def test_document_shape() -> None:
         "current": "40",
         "excluded": False,
         "reason": "",
+        "id": "",
+        "entered_at": "",
     }
     assert data["measurements"][0]["mn_original"] == 2.0
+    assert data["history"] == []
 
 
 def test_json_is_readable_utf8_text() -> None:
@@ -170,7 +175,7 @@ def document(**changes: Any) -> dict[str, Any]:
     ("changes", "path", "reason"),
     [
         ({"schema": "other"}, "schema", "not a GeoResistivity project"),
-        ({"schema_version": 2}, "schema_version", "newer than this program supports"),
+        ({"schema_version": 3}, "schema_version", "newer than this program supports"),
         ({"schema_version": "1"}, "schema_version", "positive integer"),
         ({"schema_version": 0}, "schema_version", "positive integer"),
         ({"extra": 1}, "extra", "unknown field"),
@@ -240,14 +245,14 @@ def test_rows_are_not_validated_on_load_but_kept_as_typed() -> None:
 def test_older_versions_are_migrated_before_reading(monkeypatch: pytest.MonkeyPatch) -> None:
     import georesistivity.project as project_module
 
-    def to_version_2(data: dict[str, Any]) -> dict[str, Any]:
-        return {**data, "schema_version": 2, "survey": {"notes": "migrated"}}
+    def to_version_3(data: dict[str, Any]) -> dict[str, Any]:
+        return {**data, "schema_version": 3, "survey": {"notes": "migrated"}}
 
-    version_1 = document()  # written before the version changes
-    monkeypatch.setattr(project_module, "SCHEMA_VERSION", 2)
-    monkeypatch.setitem(project_module._MIGRATIONS, 1, to_version_2)
+    version_2 = document()  # written before the version changes
+    monkeypatch.setattr(project_module, "SCHEMA_VERSION", 3)
+    monkeypatch.setitem(project_module._MIGRATIONS, 2, to_version_3)
 
-    project = project_from_dict(version_1)
+    project = project_from_dict(version_2)
 
     assert project.survey.notes == "migrated"
 
@@ -255,3 +260,122 @@ def test_older_versions_are_migrated_before_reading(monkeypatch: pytest.MonkeyPa
 def test_boolean_is_not_accepted_as_a_number() -> None:
     with pytest.raises(ProjectFormatError, match="must be a number or null"):
         project_from_dict(document(survey__azimuth_deg=True))
+
+
+V1_FILE = Path(__file__).with_name("data") / "synthetic_v1.geores.json"
+TIME = "2026-10-23T09:00:00-03:00"
+
+
+def project_with_history() -> Project:
+    rows = (
+        SheetRow(ab2="1", mn="0,5", delta_v="82", current="40", id="ra", entered_at=TIME),
+        SheetRow(ab2="1,3", mn="0,5", id="rb"),
+    )
+    deleted = SheetRow(ab2="1,8", mn="0,5", delta_v="9", current="50", id="rc", entered_at=TIME)
+    history = (
+        HistoryEntry(TIME, "edit", row="ra", row_number=1, field="delta_v", old="80", new="82"),
+        HistoryEntry(TIME, "delete_row", row="rc", row_number=3, old_row=deleted),
+        HistoryEntry(
+            TIME,
+            "replace_sheet",
+            source="import",
+            detail="a.csv",
+            old_rows=(deleted,),
+            old_units=("V", "A"),
+        ),
+        HistoryEntry(TIME, "append_rows", source="import", detail="b.csv", row_ids=("rb",)),
+        HistoryEntry(TIME, "units", old="V / A", new="mV / mA", old_units=("V", "A")),
+        HistoryEntry(TIME, "undo", row="ra", row_number=1, field="delta_v", undoes=1),
+    )
+    return Project(sheet_rows=rows, history=history)
+
+
+def test_version_2_keeps_row_ids_reading_times_and_history() -> None:
+    project = project_with_history()
+
+    read = project_from_json(project_to_json(project))
+
+    assert read == project
+    assert [(row.id, row.entered_at) for row in read.sheet_rows] == [("ra", TIME), ("rb", "")]
+    assert read.history[1].old_row is not None
+    assert read.history[1].old_row.id == "rc"
+
+
+def test_history_entries_store_only_their_own_fields() -> None:
+    data = project_to_dict(project_with_history())
+
+    assert data["history"][0] == {
+        "at": TIME,
+        "action": "edit",
+        "row": "ra",
+        "row_number": 1,
+        "field": "delta_v",
+        "old": "80",
+        "new": "82",
+    }
+    assert data["history"][3] == {
+        "at": TIME,
+        "action": "append_rows",
+        "source": "import",
+        "detail": "b.csv",
+        "row_ids": ["rb"],
+    }
+
+
+def test_version_1_file_is_migrated_with_new_row_ids() -> None:
+    project = project_from_json(V1_FILE.read_text(encoding="utf-8"))
+
+    assert [row.delta_v for row in project.sheet_rows] == ["80", "45", ""]
+    assert project.sheet_rows[1].reason == "loose electrode"
+    assert len({row.id for row in project.sheet_rows}) == 3
+    assert all(row.id and row.entered_at == "" for row in project.sheet_rows)
+    assert project.history == ()
+    assert project_to_dict(project)["schema_version"] == 2
+
+
+def history_document(**changes: Any) -> dict[str, Any]:
+    data = project_to_dict(project_with_history())
+    for dotted, value in changes.items():
+        target = data
+        *parents, last = dotted.split("__")
+        for key in parents:
+            target = target[int(key)] if key.isdigit() else target[key]
+        key: int | str = int(last) if last.isdigit() else last
+        target[key] = value
+    return data
+
+
+@pytest.mark.parametrize(
+    ("changes", "path", "reason"),
+    [
+        ({"sheet__rows__1__id": "ra"}, "sheet.rows[1].id", "'ra' is used by more than one row"),
+        ({"sheet__rows__0__entered_at": "yesterday"}, "sheet.rows[0].entered_at", "with offset"),
+        (
+            {"sheet__rows__0__entered_at": "2026-10-23T09:00:00"},
+            "sheet.rows[0].entered_at",
+            "offset",
+        ),
+        ({"history": {}}, "history", "must be a list"),
+        ({"history__0__action": "move"}, "history[0].action", "must be one of: edit"),
+        ({"history__0__field": "colour"}, "history[0].field", "must be one of: marker"),
+        ({"history__2__source": "web"}, "history[2].source", "must be one of: import"),
+        ({"history__0__at": "now"}, "history[0].at", "with offset"),
+        ({"history__0__row_number": 0}, "history[0].row_number", "earlier entry"),
+        ({"history__5__undoes": 6}, "history[5].undoes", "earlier entry"),
+        ({"history__2__old_units": ["V"]}, "history[2].old_units", "DeltaV unit and the current"),
+        ({"history__1__old_row": {"ab2": 1}}, "history[1].old_row.ab2", "must be text"),
+        ({"history__0__extra": 1}, "history[0].extra", "unknown field"),
+    ],
+)
+def test_invalid_history_names_the_problem(changes: dict[str, Any], path: str, reason: str) -> None:
+    with pytest.raises(ProjectFormatError) as error:
+        project_from_dict(history_document(**changes))
+
+    assert error.value.path == path
+    assert reason in error.value.reason
+
+
+def test_rows_in_the_history_may_leave_out_default_fields() -> None:
+    project = project_from_dict(history_document(history__1__old_row={"ab2": "1,8"}))
+
+    assert project.history[1].old_row == SheetRow(ab2="1,8")
