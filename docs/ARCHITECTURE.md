@@ -520,7 +520,7 @@ dado digitado já nasce com histórico; o custo é adiar as entregas visuais.
 | D-12 | Como gerar o PDF | **Sem dependência nova:** HTML autocontido e PDF desenhado com o matplotlib, que já é dependência. O WeasyPrint exige bibliotecas do sistema (Pango), difíceis de instalar no Windows; o ReportLab seria mais uma dependência para manter. **Aprovada.** |
 | D-13 | Política do histórico | **Registro automático, sem exigir motivo:** toda alteração de valor já digitado, toda linha apagada e toda troca da folha entram no histórico com horário; digitar numa célula vazia não conta como alteração. A exclusão continua exigindo motivo. Alternativa mais rígida, no estilo das boas práticas de laboratório: exigir motivo para corrigir uma leitura completa. É mais rastreável, mas atrapalha a digitação em campo. **Aprovada.** |
 | D-14 | Horário da leitura | **Automático:** o momento em que ΔV e I da linha ficaram completos, gravado como "digitado em". Quando a folha é passada a limpo no escritório, esse é o horário da digitação, não o da medição, e o relatório diz isso. Como a folha de papel não tem coluna de hora, não proponho hora digitada à mão. **Aprovada.** |
-| D-15 | Escala do papel bilog | Preciso do **módulo do papel que você usa** (tamanho de uma década, em mm) para usar como padrão na exportação em escala. O valor fica configurável. **Pendente** (antes do M8). |
+| D-15 | Escala do papel bilog | Preciso do **módulo do papel que você usa** (tamanho de uma década, em mm) para usar como padrão na exportação em escala. O valor fica configurável. **Pendente:** o M8 usa 50 mm como padrão provisório. |
 
 ### 15.4 Notas técnicas
 
@@ -565,6 +565,17 @@ dois casos a parte de baixo fica pontilhada até a borda e a posição é circul
 Conferido no navegador: na curva da tela (uma década tem cerca de 160 pixels), a barra só passa
 do marcador quando o erro-padrão é maior que cerca de 5% do ρa, ou cerca de 10% nas posições
 circuladas. Abaixo disso, o valor é lido na coluna de erro-padrão da tabela de posições.
+
+**Andamento:** M8 concluído em 2026-10-23: exportação da curva em PNG (300 dpi), SVG e PDF, no
+tamanho padrão ou na **escala do papel bilog**, em que a área do gráfico mede exatamente o
+número de décadas vezes o módulo nos dois eixos; título opcional com SEV nº, local e data;
+nome do arquivo a partir do projeto; arquivos reproduzíveis (sem data de criação) e fontes do
+PDF embutidas como TrueType; comando `georesistivity plot`. O módulo padrão é **provisório**,
+50 mm por década, escolhido para que as 3 × 4 décadas da folha caibam em A4 impresso em 100%;
+não é o módulo de nenhum papel. A D-15 continua pendente. Para a CLI rotular a figura em
+português, os catálogos de texto passaram de `georesistivity.app.i18n` para
+`georesistivity.i18n` (prevista na seção 15.4 para o M10). O botão gera o arquivo só no clique,
+para que a figura em 300 dpi não seja redesenhada a cada célula digitada.
 
 ---
 

@@ -246,6 +246,14 @@ The **Field sheet (VES)** tab is a digital version of the paper Schlumberger sou
   position read once has no bar, and a caption says how many positions have one. A bar can
   only reach zero when readings have opposite signs or one of them is zero; its lower part is
   then dotted down to the bottom of the plot and the point is circled.
+- **Export figure** saves the curve as PNG (300 dpi), SVG, or PDF, at the standard size
+  (17.8 × 17.8 cm) or **to bilog paper scale**: one decade measures the chosen modulus
+  (millimetres per decade) on both axes, so a print at 100% can be laid over master curves of
+  the same modulus. The page shows the resulting plot area. The default modulus of 50 mm is
+  provisional, chosen so that the 3 × 4 decades of the field sheet fit on A4; replace it with
+  the modulus of your paper. The title can carry the SEV number, place, and date, and the file
+  is named after them (for example `SEV-01-Fazenda-ves-curve.pdf`). The same sheet and options
+  always give the same file.
 - **Export points (CSV)** gives one row per position with its statistics; **Export readings
   (CSV)** gives every reading, including excluded ones and their reasons.
 
@@ -424,12 +432,21 @@ rho_a = 2238,38476568 ohm.m
 K = 626,747734391 m (calculated: schlumberger (AB/2 = 20 m, MN = 2 m))
 ```
 
+```bash
+georesistivity plot SEV-01-Fazenda.geores.json --decade-mm 62,5
+```
+
+```text
+wrote SEV-01-Fazenda-ves-curve.pdf (pdf, 36 positions, plot area 187.5 x 250 mm (3 x 4 decades of 62.5 mm))
+```
+
 | Command | Purpose |
 | --- | --- |
 | `georesistivity app` | Start the interface (see Quick Start). |
 | `georesistivity k ARRAY ...` | K for `schlumberger`, `wenner`, `dipole-dipole`, `pole-dipole`, or `general`. |
 | `georesistivity k table` | Schlumberger K table by AB/2 and MN; defaults to the standard field-sheet spacings. |
 | `georesistivity calc ...` | $\rho_a$ for one reading, with `--k` or with `--ab2` and `--mn`. |
+| `georesistivity plot PROJECT` | The VES curve of a project file as PDF, SVG (`-o curve.svg`), or PNG; `--decade-mm [MM]` draws it to bilog paper scale, and `--language en` writes the figure texts in English. |
 
 Every length or electrical value takes its unit (`20m`, `2000cm`, `125mV`); write negative
 values with an equals sign (`--dv=-125mV`). `--number-format en` prints a decimal point.
@@ -439,13 +456,14 @@ values with an equals sign (`--dv=-125mV`). `--number-format en` prints a decima
 
 The interface starts in **Brazilian Portuguese**; the **Language** selector in the sidebar
 switches to English at once. All texts live in two catalogs
-(`src/georesistivity/app/i18n/pt_br.py` and `en.py`), and the test suite checks that both have
+(`src/georesistivity/i18n/pt_br.py` and `en.py`), and the test suite checks that both have
 the same entries and placeholders. Errors from the scientific core carry a message code and are
 translated by that code, so a message such as an ambiguous value or `MN/2 must be smaller than
 AB/2` appears in the selected language.
 
 Files do not depend on the interface language: CSV headers, project files, and the command
-line stay in English. The few texts drawn by Streamlit's own file-upload widget (such as
+line stay in English. Exported figures are for people, so their texts follow the interface
+language (or `--language` in `georesistivity plot`, Portuguese by default). The few texts drawn by Streamlit's own file-upload widget (such as
 "Upload") are not translatable.
 
 ## Demonstration Data
@@ -472,7 +490,7 @@ GeoResistivity/
 │   └── app.py              # compatibility entry point for `streamlit run`
 ├── src/georesistivity/
 │   ├── app/                # Streamlit interface
-│   │   ├── i18n/           # pt_br.py and en.py text catalogs
+│   │   ├── i18n/           # session language and text helpers
 │   │   ├── common.py
 │   │   ├── field_sheet_view.py
 │   │   ├── import_view.py
@@ -483,8 +501,10 @@ GeoResistivity/
 │   ├── core.py
 │   ├── csv_import.py
 │   ├── field_sheet.py
+│   ├── figures.py
 │   ├── formatting.py
 │   ├── geometry.py
+│   ├── i18n/               # pt_br.py and en.py text catalogs
 │   ├── io.py
 │   ├── messages.py
 │   ├── models.py
@@ -515,7 +535,8 @@ GeoResistivity/
 | `src/georesistivity/project.py` | Versioned `.geores.json` project files and sheet templates. |
 | `src/georesistivity/storage.py` | Local autosave copies and templates, written atomically. |
 | `src/georesistivity/messages.py` | Message codes of the scientific core, with English text. |
-| `src/georesistivity/app/i18n/` | Interface texts in Brazilian Portuguese and English. |
+| `src/georesistivity/i18n/` | Texts in Brazilian Portuguese and English, shared by the interface and the command line. |
+| `src/georesistivity/figures.py` | VES curve files (PNG, SVG, PDF), to scale or at standard size, with titles in either language. |
 | `src/georesistivity/csv_import.py` | CSV reading, column mapping, and row validation for import. |
 | `src/georesistivity/spreadsheet.py` | Protection of CSV text against formula injection, and its inverse. |
 | `src/georesistivity/field_sheet.py` | Rows of the digital field sheet turned into sounding points. |

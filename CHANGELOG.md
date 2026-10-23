@@ -19,6 +19,24 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
   `create_sounding_figure`.
 - Standard-error column in the table of positions, and a caption with the number of
   positions that have an error bar.
+- **Export figure** on the field sheet: the VES curve as PNG (300 dpi), SVG, or PDF, at the
+  standard size or to bilog paper scale with a configurable modulus in millimetres per decade
+  (provisional default of 50 mm, decision D-15), with an optional title line holding the SEV
+  number, place, and date. The file is drawn only when the download button is clicked.
+- `georesistivity plot PROJECT`: the same figure from a project file, with `-o`, `--format`,
+  `--decade-mm [MM]`, `--no-error-bars`, `--no-title-details`, `--language`, and
+  `--number-format`.
+- `georesistivity.figures` (`FigureOptions`, `sounding_figure_file`, `figure_to_bytes`,
+  `sounding_labels`, `survey_subtitle`, `figure_file_name`, `evaluate_project_sheet`), the
+  `decade_mm` option of `plotting.create_sounding_figure`, `plotting.sounding_axis_limits`,
+  `plotting.sounding_decades`, and `project.survey_file_stem`.
+- Figure files are reproducible (no creation date, fixed SVG ids) and PDF fonts are embedded
+  as TrueType.
+
+### Changed
+
+- The text catalogs moved from `georesistivity.app.i18n` to `georesistivity.i18n`, which
+  does not import Streamlit, so the command line can label figures in Portuguese.
 
 ## [0.3.0] - 2026-10-22
 
