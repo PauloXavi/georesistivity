@@ -450,3 +450,21 @@ def test_bundled_sample_dataset_imports_as_measurements() -> None:
     assert len(result.measurements) == 8
     assert result.measurements[0].spacing_ab2_original == 1.0
     assert result.measurements[0].geometric_factor_source == "synthetic demonstration data"
+
+
+def test_synthetic_ves_example_imports_into_the_field_sheet() -> None:
+    path = Path(__file__).resolve().parents[1] / "examples" / "synthetic_ves_excel_pt_br.csv"
+    data = read_csv(path.read_bytes())
+    mapping = guess_mapping(data.header, "sheet")
+    decimal = detect_decimal(data, [mapping["ab2"], mapping["mn"], mapping["delta_v"]])
+
+    result = import_sheet(data, mapping, decimal=decimal, voltage_unit="mV", current_unit="mA")
+    points = evaluate_sheet(result.rows, voltage_unit="mV", current_unit="mA").points
+
+    assert (data.delimiter, decimal) == (";", ",")
+    assert result.issues == ()
+    assert len(points) == 36
+    repeated = next(p for p in points if (p.point.ab2_m, p.point.mn_m) == (10.0, 2.0))
+    assert len(repeated.readings) == 3
+    assert repeated.statistics is not None
+    assert repeated.statistics.count == 2

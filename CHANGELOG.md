@@ -50,9 +50,18 @@ IDs refer to [`docs/AUDIT.md`](docs/AUDIT.md).
   (replace or add) or the single measurements. Exports round-trip exactly.
 - `validation.parse_number_with_decimal`, `validation.is_ambiguous_number_text`, and
   `formatting.format_for_input` for values that read back unambiguously.
+- **Bilingual interface**, Brazilian Portuguese by default, with a Language selector
+  (`georesistivity.app.i18n`); catalogs are checked for the same entries and placeholders (U-05).
+- `georesistivity.messages`: every input error carries a message code (`Problem`) so it can be
+  translated; `str(error)` keeps the same English text.
+- Translatable figure labels (`SpacingFigureLabels`, `SoundingFigureLabels`).
+- `examples/synthetic_ves_excel_pt_br.csv`, a synthetic sounding in Excel pt-BR format, and its
+  curve in `docs/images/`.
 
 ### Changed
 
+- `GeometricFactorOutcome.issues` holds `ParameterIssue` objects instead of tuples.
+- An invalid date in a project file reads "must be a date written as YYYY-MM-DD".
 - The interface opens on the field sheet; the single-measurement form, K calculator, and
   session list moved to the **Single measurement** tab.
 - The Streamlit interface moved into the package as `georesistivity.app`, with typed session

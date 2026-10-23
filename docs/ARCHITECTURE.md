@@ -450,6 +450,13 @@ editável das colunas, relatório de cada linha recusada (linha, coluna, motivo)
 exata com os próprios CSVs nos dois formatos. Os valores importados são gravados na folha como
 texto sem ambiguidade (`1,234` vira `1,2340`), para que a regra D-1 não os recuse depois.
 
+**Andamento:** M6 concluído em 2026-10-22, e com ele a **P1**: interface em português do Brasil
+(padrão) e inglês, com seletor de idioma; catálogos `app/i18n/pt_br.py` e `en.py` com teste
+de mesmas chaves e marcadores; erros do núcleo traduzidos por código
+(`georesistivity.messages`), nunca pelo texto; rótulos dos gráficos traduzíveis. Os arquivos
+(CSV, projeto) e a linha de comando continuam em inglês, para não depender do idioma da tela.
+Os poucos textos internos do botão de envio de arquivo do Streamlit não são traduzíveis.
+
 **Ponto de parada:** ao final do M6 eu paro, rodo o app e mostro capturas, conforme o plano.
 Também posso parar ao fim de cada marco, se você preferir revisar aos poucos.
 

@@ -566,7 +566,7 @@ significativos).
 | U-02 | Parcial | Limpeza dos campos e aviso de duplicata feitos. Editar ou excluir qualquer linha fica para a Fase 3. |
 | U-03 | Corrigido (Fase 3, M4) | Projeto `.geores.json`, autosave por sessão e recuperação. |
 | U-04 | Parcial | A barra lateral e a barra de ferramentas foram corrigidas. O teclado numérico depende da arquitetura da Fase 3. |
-| U-05 | Fase 3 | Só o formato numérico pt-BR foi feito agora; os textos continuam em inglês. |
+| U-05 | Corrigido (Fase 3, M6) | Interface em português (padrão) e inglês. |
 | U-06 | Corrigido | `Ω·m` na interface e no gráfico. O CSV mantém `ohm.m` em ASCII. |
 | U-07 | Corrigido | |
 | Q-01 | Corrigido | |

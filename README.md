@@ -6,7 +6,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 GeoResistivity is a scientific Python application for apparent resistivity calculation,
-unit-aware measurement handling, validation, visualization, and CSV export.
+unit-aware measurement handling, validation, visualization, and CSV export. Its interface is in
+Brazilian Portuguese by default, or in English.
 
 The application implements:
 
@@ -219,6 +220,8 @@ prefixed with an apostrophe so that spreadsheet applications do not evaluate the
 
 The **Field sheet (VES)** tab is a digital version of the paper Schlumberger sounding sheet:
 
+![Synthetic Schlumberger sounding drawn by GeoResistivity, one segment per MN](docs/images/ves_synthetic_pt_br.png)
+
 - The table starts with the 45 (AB/2, MN) positions of the standard sheet, AB/2 from 1.0 to
   320 m and MN from 0.5 to 100 m, with K calculated for each position.
 - Type ΔV and I in the rows you read; blank rows are ignored. The units of ΔV and I are
@@ -426,12 +429,31 @@ Every length or electrical value takes its unit (`20m`, `2000cm`, `125mV`); writ
 values with an equals sign (`--dv=-125mV`). `--number-format en` prints a decimal point.
 `georesistivity COMMAND --help` lists every option.
 
+## Language
+
+The interface starts in **Brazilian Portuguese**; the **Language** selector in the sidebar
+switches to English at once. All texts live in two catalogs
+(`src/georesistivity/app/i18n/pt_br.py` and `en.py`), and the test suite checks that both have
+the same entries and placeholders. Errors from the scientific core carry a message code and are
+translated by that code, so a message such as an ambiguous value or `MN/2 must be smaller than
+AB/2` appears in the selected language.
+
+Files do not depend on the interface language: CSV headers, project files, and the command
+line stay in English. The few texts drawn by Streamlit's own file-upload widget (such as
+"Upload") are not translatable.
+
 ## Demonstration Data
 
 [`examples/sample_measurements.csv`](examples/sample_measurements.csv) contains the sample
 measurements provided as a small example and reference dataset. The I/O test suite reads this
 file to verify its structure and scientific consistency, and it can be loaded in the
 **Import CSV** tab.
+
+[`examples/synthetic_ves_excel_pt_br.csv`](examples/synthetic_ves_excel_pt_br.csv) is a
+synthetic Schlumberger sounding over the standard field-sheet spacings, saved as Excel on a
+Portuguese system would save it (`;`, decimal comma): an H-type curve with overlap readings, one
+repeated reading, and one excluded reading. Import it in the **Import CSV** tab to see the field
+sheet and the curve above.
 
 The bundled sample measurements are synthetic and provided for demonstration and testing
 purposes.
@@ -444,6 +466,7 @@ GeoResistivity/
 │   └── app.py              # compatibility entry point for `streamlit run`
 ├── src/georesistivity/
 │   ├── app/                # Streamlit interface
+│   │   ├── i18n/           # pt_br.py and en.py text catalogs
 │   │   ├── common.py
 │   │   ├── field_sheet_view.py
 │   │   ├── import_view.py
@@ -457,6 +480,7 @@ GeoResistivity/
 │   ├── formatting.py
 │   ├── geometry.py
 │   ├── io.py
+│   ├── messages.py
 │   ├── models.py
 │   ├── plotting.py
 │   ├── project.py
@@ -484,6 +508,8 @@ GeoResistivity/
 | `src/georesistivity/stacking.py` | Statistics of repeated readings. |
 | `src/georesistivity/project.py` | Versioned `.geores.json` project files and sheet templates. |
 | `src/georesistivity/storage.py` | Local autosave copies and templates, written atomically. |
+| `src/georesistivity/messages.py` | Message codes of the scientific core, with English text. |
+| `src/georesistivity/app/i18n/` | Interface texts in Brazilian Portuguese and English. |
 | `src/georesistivity/csv_import.py` | CSV reading, column mapping, and row validation for import. |
 | `src/georesistivity/spreadsheet.py` | Protection of CSV text against formula injection, and its inverse. |
 | `src/georesistivity/field_sheet.py` | Rows of the digital field sheet turned into sounding points. |
@@ -533,13 +559,15 @@ python -m mypy
 python -m pip_audit --skip-editable
 ```
 
-The current suite contains **583 automated tests** with branch coverage enforced at 95%,
+The current suite contains **1017 automated tests** with branch coverage enforced at 95%,
 covering:
 
 - scientific calculation and sign policy;
 - sounding points, repeated readings, exclusions, and the digital field sheet;
 - project files, migrations, autosave, recovery, and templates;
 - CSV import, including round trips of both export formats;
+- the Portuguese and English catalogs (same entries and placeholders) and the interface in both
+  languages;
 - geometric factors, including the field-sheet K table and every array against the general
   formula;
 - unit conversions;
