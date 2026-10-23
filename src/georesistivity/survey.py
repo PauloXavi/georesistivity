@@ -13,6 +13,7 @@ from georesistivity.geometry import (
     schlumberger_geometric_factor,
     schlumberger_spacing_ratio,
 )
+from georesistivity.messages import GeoValueError, Problem, problem_of
 from georesistivity.models import MeasurementFieldError, MeasurementWarning
 from georesistivity.stacking import DEFAULT_CV_THRESHOLD, StackStatistics, stack
 from georesistivity.units import convert_current_to_amperes, convert_voltage_to_volts
@@ -31,7 +32,7 @@ class Reading:
 
     def __post_init__(self) -> None:
         if self.excluded and not (self.exclusion_reason and self.exclusion_reason.strip()):
-            raise ValueError("an excluded reading needs a reason")
+            raise GeoValueError("reading.reason_required")
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,13 +89,13 @@ def evaluate_reading(reading: Reading) -> ReadingResult:
     try:
         delta_v_v = convert_voltage_to_volts(reading.delta_v_original, reading.voltage_unit)
     except ValueError as exc:
-        raise MeasurementFieldError("delta_v", str(exc)) from exc
+        raise MeasurementFieldError("delta_v", problem_of(exc)) from exc
     try:
         current_a = convert_current_to_amperes(reading.current_original, reading.current_unit)
     except ValueError as exc:
-        raise MeasurementFieldError("current", str(exc)) from exc
+        raise MeasurementFieldError("current", problem_of(exc)) from exc
     if current_a == 0.0:
-        raise MeasurementFieldError("current", "cannot be zero")
+        raise MeasurementFieldError("current", Problem("field.zero"))
     return ReadingResult(reading, delta_v_v, current_a, delta_v_v / current_a)
 
 

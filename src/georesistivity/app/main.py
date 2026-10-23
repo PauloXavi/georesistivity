@@ -340,8 +340,8 @@ def render_k_calculator() -> None:
             st.error(
                 "K could not be calculated.\n\n"
                 + "\n\n".join(
-                    f"**{GEOMETRY_LABELS[parameter]}:** {reason}"
-                    for parameter, reason in outcome.issues
+                    f"**{GEOMETRY_LABELS[issue.parameter]}:** {issue.message}"
+                    for issue in outcome.issues
                 )
             )
         else:

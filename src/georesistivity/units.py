@@ -5,6 +5,7 @@ import re
 from collections.abc import Mapping
 from decimal import Decimal
 
+from georesistivity.messages import GeoValueError
 from georesistivity.validation import ensure_finite_number
 
 # Each unit maps to its power-of-ten exponent relative to the SI unit. Conversions shift the
@@ -47,7 +48,7 @@ def split_quantity(text: str) -> tuple[str, str]:
     """
     match = _QUANTITY_PATTERN.fullmatch(text.strip())
     if match is None:
-        raise ValueError(f"missing unit in {text!r}; write it like 20m or 125mV")
+        raise GeoValueError("unit.missing", text=text)
     return match["number"], match["unit"]
 
 
@@ -63,17 +64,16 @@ def _convert_to_si(
     try:
         exponent = exponents[unit.strip()]
     except KeyError as exc:
-        supported = ", ".join(exponents)
-        raise ValueError(
-            f"unsupported {quantity_name} unit {unit!r}; supported units: {supported}"
+        raise GeoValueError(
+            f"{quantity_name}.unsupported_unit", unit=unit, supported=", ".join(exponents)
         ) from exc
 
     converted = float(Decimal(repr(numeric_value)).scaleb(exponent))
 
     if not math.isfinite(converted):
-        raise ValueError(f"{quantity_name} value is too large to convert to SI units")
+        raise GeoValueError(f"{quantity_name}.too_large")
     if converted == 0.0 and numeric_value != 0.0:
-        raise ValueError(f"{quantity_name} value is too small to convert to SI units")
+        raise GeoValueError(f"{quantity_name}.too_small")
     return converted
 
 

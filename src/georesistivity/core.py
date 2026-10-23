@@ -3,6 +3,7 @@
 import math
 from collections.abc import Callable
 
+from georesistivity.messages import GeoValueError, Problem, problem_of
 from georesistivity.models import (
     Measurement,
     MeasurementField,
@@ -40,15 +41,15 @@ def apparent_resistivity(
     geometric_factor = ensure_finite_number(geometric_factor_m, "geometric_factor_m")
 
     if current == 0.0:
-        raise ValueError("current_a cannot be zero")
+        raise GeoValueError("core.current_zero")
     if geometric_factor == 0.0:
-        raise ValueError("geometric_factor_m cannot be zero")
+        raise GeoValueError("core.k_zero")
     if geometric_factor < 0.0:
-        raise ValueError("geometric_factor_m must be positive")
+        raise GeoValueError("core.k_negative")
 
     result = geometric_factor * delta_v / current
     if not math.isfinite(result):
-        raise ValueError("apparent resistivity result must be finite")
+        raise GeoValueError("core.result_not_finite")
     return result
 
 
@@ -61,7 +62,7 @@ def _convert_field(
     try:
         return converter(value, unit)
     except ValueError as exc:
-        raise MeasurementFieldError(field, str(exc)) from exc
+        raise MeasurementFieldError(field, problem_of(exc)) from exc
 
 
 def calculate_measurement(measurement: Measurement) -> MeasurementResult:
@@ -85,7 +86,7 @@ def calculate_measurement(measurement: Measurement) -> MeasurementResult:
         measurement.current_unit,
     )
     if current_a == 0.0:
-        raise MeasurementFieldError("current", "cannot be zero")
+        raise MeasurementFieldError("current", Problem("field.zero"))
 
     geometric_factor_m = _convert_field(
         "geometric_factor",
@@ -94,7 +95,7 @@ def calculate_measurement(measurement: Measurement) -> MeasurementResult:
         measurement.geometric_factor_unit,
     )
     if geometric_factor_m <= 0.0:
-        raise MeasurementFieldError("geometric_factor", "must be positive")
+        raise MeasurementFieldError("geometric_factor", Problem("field.not_positive"))
 
     spacing_ab2_m = None
     if measurement.spacing_ab2_original is not None and measurement.spacing_unit is not None:
@@ -105,7 +106,7 @@ def calculate_measurement(measurement: Measurement) -> MeasurementResult:
             measurement.spacing_unit,
         )
         if spacing_ab2_m <= 0.0:
-            raise MeasurementFieldError("spacing_ab2", "must be positive")
+            raise MeasurementFieldError("spacing_ab2", Problem("field.not_positive"))
 
     mn_m = None
     if measurement.mn_original is not None and measurement.mn_unit is not None:
@@ -113,7 +114,7 @@ def calculate_measurement(measurement: Measurement) -> MeasurementResult:
             "mn", convert_length_to_meters, measurement.mn_original, measurement.mn_unit
         )
         if mn_m <= 0.0:
-            raise MeasurementFieldError("mn", "must be positive")
+            raise MeasurementFieldError("mn", Problem("field.not_positive"))
 
     rho_a = apparent_resistivity(delta_v_v, current_a, geometric_factor_m)
     warnings = (MeasurementWarning.NEGATIVE_APPARENT_RESISTIVITY,) if rho_a < 0.0 else ()

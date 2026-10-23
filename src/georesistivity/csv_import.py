@@ -22,11 +22,12 @@ import io
 import re
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from georesistivity.field_sheet import SheetColumn, SheetRow, evaluate_sheet
 from georesistivity.formatting import NumberFormat, format_for_input
+from georesistivity.messages import GeoValueError, Problem, problem_of
 from georesistivity.models import Measurement, MeasurementField
 from georesistivity.services import MeasurementInput, evaluate_submission
 from georesistivity.spreadsheet import restore_spreadsheet_text
@@ -151,11 +152,15 @@ class CsvTable:
 
 @dataclass(frozen=True, slots=True)
 class ImportIssue:
-    """A row that was not imported: its line in the file, the column, and the reason."""
+    """A row that was not imported: its line in the file, the column, and the reason.
+
+    ``message`` is English; ``problem`` lets interfaces translate it.
+    """
 
     line: int
     column: str
     message: str
+    problem: Problem | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,7 +192,7 @@ def decode_csv(data: bytes) -> tuple[str, str]:
         try:
             return data[len(codecs.BOM_UTF8) :].decode("utf-8"), "UTF-8 with BOM"
         except UnicodeDecodeError as exc:
-            raise ValueError("the file starts like UTF-8 but is not valid UTF-8") from exc
+            raise GeoValueError("csv.bad_utf8") from exc
     try:
         return data.decode("utf-8"), "UTF-8"
     except UnicodeDecodeError:
@@ -237,9 +242,9 @@ def read_csv(data: bytes, *, delimiter: str | None = None) -> CsvTable:
             else:
                 rows.append(CsvRow(reader.line_num, cells))
     except csv.Error as exc:
-        raise ValueError(f"the file is not valid CSV (line {reader.line_num}): {exc}") from exc
+        raise GeoValueError("csv.invalid", line=reader.line_num, detail=str(exc)) from exc
     if header is None:
-        raise ValueError("the file has no header row")
+        raise GeoValueError("csv.no_header")
     return CsvTable(header=header, rows=tuple(rows), delimiter=chosen, encoding=encoding)
 
 
@@ -306,7 +311,7 @@ def _flag(text: str) -> bool:
         return True
     if folded in _FALSE:
         return False
-    raise ValueError(f"{text!r} is not yes or no")
+    raise GeoValueError("csv.not_flag", text=text)
 
 
 def normalize_unit(text: str) -> str:
@@ -328,8 +333,10 @@ class _RowProblems:
             return field_name
         return self.table.header[index]
 
-    def add(self, field_name: ImportField, message: str) -> None:
-        self.issues.append(ImportIssue(self.row.line, self.column(field_name), message))
+    def add(self, field_name: ImportField, problem: Problem) -> None:
+        self.issues.append(
+            ImportIssue(self.row.line, self.column(field_name), problem.text(), problem)
+        )
 
     def text(self, field_name: ImportField) -> str:
         return self.row.cell(self.mapping.get(field_name))
@@ -341,7 +348,7 @@ class _RowProblems:
         try:
             return _number(text, decimal)
         except ValueError as exc:
-            self.add(field_name, str(exc))
+            self.add(field_name, problem_of(exc))
             return None
 
 
@@ -386,18 +393,18 @@ def _sheet_candidate(
         unit = units[field_name]
         text = normalize_unit(problems.text(field_name))
         if text and text != unit:
-            problems.add(field_name, f"{text!r} differs from {unit!r}, used by the other rows")
+            problems.add(field_name, Problem("csv.unit_differs", {"text": text, "unit": unit}))
         try:
             converter(1.0, unit)
         except ValueError as exc:
-            problems.add(field_name, str(exc))
+            problems.add(field_name, problem_of(exc))
 
     values = {name: problems.number(name, decimal) for name in _SHEET_NUMBER_FIELDS}
     excluded = False
     try:
         excluded = _flag(problems.text("excluded"))
     except ValueError as exc:
-        problems.add("excluded", str(exc))
+        problems.add("excluded", problem_of(exc))
     if problems.issues:
         return None
     return SheetRow(
@@ -454,14 +461,14 @@ def import_sheet(
         problems = _RowProblems(table, mapping, row)
         if status.state == "incomplete":
             for issue in status.issues:
-                problems.add(
-                    _SHEET_ISSUE_FIELDS[issue.column], "is empty, but the other value is filled"
-                )
+                problems.add(_SHEET_ISSUE_FIELDS[issue.column], Problem("csv.other_value_filled"))
         elif status.state == "invalid":
             for issue in status.issues:
-                problems.add(_SHEET_ISSUE_FIELDS[issue.column], issue.message)
+                problems.add(
+                    _SHEET_ISSUE_FIELDS[issue.column], issue.problem or Problem.raw(issue.message)
+                )
         elif not candidate.ab2 or not candidate.mn:
-            problems.add("ab2" if not candidate.ab2 else "mn", "value cannot be empty")
+            problems.add("ab2" if not candidate.ab2 else "mn", Problem("number.empty"))
         if problems.issues:
             issues.extend(problems.issues)
         else:
@@ -555,9 +562,11 @@ def import_measurements(
             measurements.append(outcome.result.measurement)
             continue
         if outcome.error is not None:
-            issues.append(ImportIssue(row.line, "", outcome.error))
+            issues.append(ImportIssue(row.line, "", outcome.error, outcome.error_problem))
         for issue in outcome.field_issues:
-            problems.add(_SUBMISSION_FIELDS[issue.field], issue.message)
+            problems.add(
+                _SUBMISSION_FIELDS[issue.field], issue.problem or Problem.raw(issue.message)
+            )
         issues.extend(problems.issues)
     return MeasurementImport(
         measurements=tuple(measurements),

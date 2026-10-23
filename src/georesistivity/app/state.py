@@ -10,6 +10,7 @@ from georesistivity.core import calculate_measurement
 from georesistivity.field_sheet import SheetRow, template_rows
 from georesistivity.formatting import NumberFormat
 from georesistivity.io import CsvDialect
+from georesistivity.messages import GeoValueError
 from georesistivity.models import MeasurementResult
 from georesistivity.project import Project, SheetSettings, SurveyInfo
 from georesistivity.services import GeometricFactorMode, MeasurementInput
@@ -301,12 +302,12 @@ def apply_project(project: Project) -> None:
     """
     settings = project.sheet_settings
     if settings.voltage_unit not in VOLTAGE_UNITS:
-        raise ValueError(f"unsupported DeltaV unit in the sheet: {settings.voltage_unit!r}")
+        raise GeoValueError("project.unsupported_voltage_unit", unit=settings.voltage_unit)
     if settings.current_unit not in CURRENT_UNITS:
-        raise ValueError(f"unsupported current unit in the sheet: {settings.current_unit!r}")
+        raise GeoValueError("project.unsupported_current_unit", unit=settings.current_unit)
     low, high = CV_LIMIT_RANGE
     if not low <= settings.cv_limit_percent <= high:
-        raise ValueError(f"the CV limit must be between {low:g} and {high:g}%")
+        raise GeoValueError("project.cv_limit_shown", low=low, high=high)
     results = [calculate_measurement(measurement) for measurement in project.measurements]
 
     state = st.session_state

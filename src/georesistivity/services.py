@@ -22,6 +22,7 @@ from georesistivity.geometry import (
     schlumberger_geometric_factor,
     schlumberger_spacing_ratio,
 )
+from georesistivity.messages import Problem, problem_of
 from georesistivity.models import (
     Measurement,
     MeasurementField,
@@ -56,10 +57,18 @@ class MeasurementInput:
 
 @dataclass(frozen=True, slots=True)
 class FieldIssue:
-    """One input problem attributed to a measurement field."""
+    """One input problem attributed to a measurement field.
+
+    ``message`` is English; ``problem`` lets interfaces translate it.
+    """
 
     field: MeasurementField
     message: str
+    problem: Problem | None = dataclasses.field(default=None, compare=False)
+
+    @classmethod
+    def of(cls, field: MeasurementField, problem: Problem) -> "FieldIssue":
+        return cls(field, problem.text(), problem)
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +84,7 @@ class SubmissionOutcome:
     field_issues: tuple[FieldIssue, ...] = ()
     error: str | None = None
     duplicate_of: int | None = None
+    error_problem: Problem | None = dataclasses.field(default=None, compare=False)
 
     @property
     def accepted(self) -> bool:
@@ -92,7 +102,7 @@ def _parse_field(field: MeasurementField, raw_value: str, issues: list[FieldIssu
     try:
         return parse_number(raw_value)
     except ValueError as exc:
-        issues.append(FieldIssue(field, str(exc)))
+        issues.append(FieldIssue.of(field, problem_of(exc)))
         return None
 
 
@@ -113,7 +123,7 @@ def _length_in_meters(
     try:
         return convert_length_to_meters(value, unit)
     except ValueError as exc:
-        issues.append(FieldIssue(field, str(exc)))
+        issues.append(FieldIssue.of(field, problem_of(exc)))
         return None
 
 
@@ -147,9 +157,9 @@ def evaluate_submission(
     mn = _parse_optional_field("mn", entry.mn, issues)
     if calculated:
         if not entry.spacing_ab2.strip():
-            issues.append(FieldIssue("spacing_ab2", "is required to calculate K"))
+            issues.append(FieldIssue.of("spacing_ab2", Problem("field.required_for_k")))
         if not entry.mn.strip():
-            issues.append(FieldIssue("mn", "is required to calculate K"))
+            issues.append(FieldIssue.of("mn", Problem("field.required_for_k")))
 
     if issues or delta_v is None or current is None:
         return SubmissionOutcome(field_issues=tuple(issues))
@@ -164,9 +174,9 @@ def evaluate_submission(
             factor = schlumberger_geometric_factor(spacing_m, mn_m)
         except GeometryError as exc:
             field = _GEOMETRY_FIELDS[exc.parameter]
-            return SubmissionOutcome(field_issues=(FieldIssue(field, exc.reason),))
+            return SubmissionOutcome(field_issues=(FieldIssue.of(field, exc.problem),))
         except ValueError as exc:
-            return SubmissionOutcome(error=str(exc))
+            return SubmissionOutcome(error=str(exc), error_problem=problem_of(exc))
         factor_unit = "m"
         source: str | None = schlumberger_source(spacing, entry.spacing_unit, mn, entry.mn_unit)
     else:
@@ -191,9 +201,9 @@ def evaluate_submission(
     try:
         result = calculate_measurement(measurement)
     except MeasurementFieldError as exc:
-        return SubmissionOutcome(field_issues=(FieldIssue(exc.field, exc.reason),))
+        return SubmissionOutcome(field_issues=(FieldIssue.of(exc.field, exc.problem),))
     except ValueError as exc:
-        return SubmissionOutcome(error=str(exc))
+        return SubmissionOutcome(error=str(exc), error_problem=problem_of(exc))
 
     if (
         calculated
@@ -211,12 +221,26 @@ def evaluate_submission(
 
 
 @dataclass(frozen=True, slots=True)
+class ParameterIssue:
+    """One problem with one geometry parameter; ``message`` is English."""
+
+    parameter: GeometryParameter
+    message: str
+    problem: Problem | None = dataclasses.field(default=None, compare=False)
+
+    @classmethod
+    def of(cls, parameter: GeometryParameter, problem: Problem) -> "ParameterIssue":
+        return cls(parameter, problem.text(), problem)
+
+
+@dataclass(frozen=True, slots=True)
 class GeometricFactorOutcome:
     """Outcome of a stand-alone K calculation: ``value_m`` or the problems found."""
 
     value_m: float | None = None
-    issues: tuple[tuple[GeometryParameter, str], ...] = ()
+    issues: tuple[ParameterIssue, ...] = ()
     error: str | None = None
+    error_problem: Problem | None = dataclasses.field(default=None, compare=False)
 
 
 def calculate_geometric_factor(
@@ -228,7 +252,7 @@ def calculate_geometric_factor(
 
     The dimensionless ``n`` of dipole arrays is not converted.
     """
-    issues: list[tuple[GeometryParameter, str]] = []
+    issues: list[ParameterIssue] = []
     values: dict[GeometryParameter, float] = {}
     for parameter in ARRAY_PARAMETERS[array]:
         raw_value = raw_values.get(parameter, "")
@@ -238,13 +262,13 @@ def calculate_geometric_factor(
                 number if parameter == "n" else convert_length_to_meters(number, length_unit)
             )
         except ValueError as exc:
-            issues.append((parameter, str(exc)))
+            issues.append(ParameterIssue.of(parameter, problem_of(exc)))
     if issues:
         return GeometricFactorOutcome(issues=tuple(issues))
 
     try:
         return GeometricFactorOutcome(value_m=geometric_factor(array, values))
     except GeometryError as exc:
-        return GeometricFactorOutcome(issues=((exc.parameter, exc.reason),))
+        return GeometricFactorOutcome(issues=(ParameterIssue.of(exc.parameter, exc.problem),))
     except ValueError as exc:
-        return GeometricFactorOutcome(error=str(exc))
+        return GeometricFactorOutcome(error=str(exc), error_problem=problem_of(exc))

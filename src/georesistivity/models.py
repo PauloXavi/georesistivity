@@ -4,16 +4,22 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Literal
 
+from georesistivity.messages import GeoValueError, Problem
+
 MeasurementField = Literal["delta_v", "current", "geometric_factor", "spacing_ab2", "mn"]
 
 
 class MeasurementFieldError(ValueError):
-    """A measurement value rejected because of one specific input field."""
+    """A measurement value rejected because of one specific input field.
 
-    def __init__(self, field: MeasurementField, reason: str) -> None:
-        super().__init__(f"{field}: {reason}")
+    ``reason`` is the English text of ``problem``, which interfaces can translate.
+    """
+
+    def __init__(self, field: MeasurementField, problem: Problem) -> None:
         self.field: MeasurementField = field
-        self.reason = reason
+        self.problem = problem
+        self.reason = problem.text()
+        super().__init__(f"{field}: {self.reason}")
 
 
 class MeasurementWarning(StrEnum):
@@ -57,9 +63,9 @@ class Measurement:
         has_spacing = self.spacing_ab2_original is not None
         has_spacing_unit = self.spacing_unit is not None
         if has_spacing != has_spacing_unit:
-            raise ValueError("spacing value and spacing unit must be provided together")
+            raise GeoValueError("measurement.spacing_pair")
         if (self.mn_original is None) != (self.mn_unit is None):
-            raise ValueError("MN value and MN unit must be provided together")
+            raise GeoValueError("measurement.mn_pair")
 
 
 @dataclass(frozen=True, slots=True)

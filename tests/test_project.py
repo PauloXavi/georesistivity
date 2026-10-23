@@ -175,7 +175,7 @@ def document(**changes: Any) -> dict[str, Any]:
         ({"schema_version": 0}, "schema_version", "positive integer"),
         ({"extra": 1}, "extra", "unknown field"),
         ({"sheet": ...}, "sheet", "is required"),
-        ({"survey__date": "22/10/2026"}, "survey.date", "Invalid isoformat"),
+        ({"survey__date": "22/10/2026"}, "survey.date", "must be a date written as YYYY-MM-DD"),
         ({"survey__latitude": "south"}, "survey.latitude", "must be a number or null"),
         ({"survey__latitude": 100}, "survey", "latitude must be between"),
         ({"survey__name": 3}, "survey.name", "must be text"),

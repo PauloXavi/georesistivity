@@ -4,6 +4,8 @@ import math
 import re
 from numbers import Real
 
+from georesistivity.messages import GeoValueError
+
 # ASCII digits only, one optional decimal separator ("." or ","), optional exponent.
 _NUMBER_PATTERN = re.compile(r"[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?", re.ASCII)
 
@@ -17,7 +19,7 @@ _AMBIGUOUS_PATTERN = re.compile(
 )
 
 
-class AmbiguousNumberError(ValueError):
+class AmbiguousNumberError(GeoValueError):
     """Raised when a value could be read with either a thousands or a decimal separator."""
 
 
@@ -28,7 +30,7 @@ def ensure_finite_number(value: float, field_name: str) -> float:
 
     converted = float(value)
     if not math.isfinite(converted):
-        raise ValueError(f"{field_name} must be finite")
+        raise GeoValueError("value.named_not_finite", name=field_name)
     return converted
 
 
@@ -49,20 +51,22 @@ def parse_number_with_decimal(value: str, decimal_separator: str) -> float:
         raise TypeError("value must be a string")
     normalized = value.strip()
     if not normalized:
-        raise ValueError("value cannot be empty")
+        raise GeoValueError("number.empty")
     other = "," if decimal_separator == "." else "."
     if other in normalized:
-        raise ValueError(
-            f"{value.strip()!r} uses {other!r}, but the decimal separator is "
-            f"{decimal_separator!r}; thousands separators are not accepted"
+        raise GeoValueError(
+            "number.wrong_separator",
+            value=value.strip(),
+            other=other,
+            separator=decimal_separator,
         )
     if _NUMBER_PATTERN.fullmatch(normalized) is None:
         if _is_non_finite_token(normalized):
-            raise ValueError("value must be finite")
-        raise ValueError(f"invalid numeric value: {value!r}")
+            raise GeoValueError("number.not_finite")
+        raise GeoValueError("number.invalid", value=value)
     parsed = float(normalized.replace(",", "."))
     if not math.isfinite(parsed):
-        raise ValueError("value must be finite")
+        raise GeoValueError("number.not_finite")
     return parsed
 
 
@@ -79,12 +83,9 @@ def parse_number(value: str) -> float:
 
     normalized = value.strip()
     if not normalized:
-        raise ValueError("value cannot be empty")
+        raise GeoValueError("number.empty")
     if "," in normalized and "." in normalized:
-        raise ValueError(
-            "ambiguous decimal separators; thousands separators are not accepted "
-            "(type 1234.5 or 1234,5)"
-        )
+        raise GeoValueError("number.both_separators")
 
     ambiguous = _AMBIGUOUS_PATTERN.fullmatch(normalized)
     if ambiguous is not None:
@@ -94,19 +95,21 @@ def parse_number(value: str) -> float:
         fraction = ambiguous["fraction"]
         exponent = ambiguous["exponent"] or ""
         raise AmbiguousNumberError(
-            f"ambiguous value {value.strip()!r}: {separator!r} may be a thousands or a "
-            f"decimal separator. Type {sign}{integer}{fraction}{exponent} for the integer, "
-            f"or {sign}{integer}{separator}{fraction}0{exponent} for the decimal value"
+            "number.ambiguous",
+            value=value.strip(),
+            separator=separator,
+            integer=f"{sign}{integer}{fraction}{exponent}",
+            decimal=f"{sign}{integer}{separator}{fraction}0{exponent}",
         )
 
     if _NUMBER_PATTERN.fullmatch(normalized) is None:
         if _is_non_finite_token(normalized):
-            raise ValueError("value must be finite")
-        raise ValueError(f"invalid numeric value: {value!r}")
+            raise GeoValueError("number.not_finite")
+        raise GeoValueError("number.invalid", value=value)
 
     parsed = float(normalized.replace(",", "."))
     if not math.isfinite(parsed):
-        raise ValueError("value must be finite")
+        raise GeoValueError("number.not_finite")
     return parsed
 
 

@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 from georesistivity.field_sheet import SheetRow, template_rows
+from georesistivity.messages import GeoValueError, Problem, problem_of
 from georesistivity.models import Measurement
 from georesistivity.stacking import DEFAULT_CV_THRESHOLD
 
@@ -32,12 +33,16 @@ _T = TypeVar("_T")
 
 
 class ProjectFormatError(ValueError):
-    """A project file that cannot be read, with the JSON path of the problem."""
+    """A project file that cannot be read, with the JSON path of the problem.
 
-    def __init__(self, path: str, reason: str) -> None:
-        super().__init__(f"{path}: {reason}" if path else reason)
+    ``reason`` is English; ``problem`` lets interfaces translate it.
+    """
+
+    def __init__(self, path: str, problem: Problem) -> None:
         self.path = path
-        self.reason = reason
+        self.problem = problem
+        self.reason = problem.text()
+        super().__init__(f"{path}: {self.reason}" if path else self.reason)
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,9 +78,9 @@ def _check_range(name: str, value: float | None, low: float, high: float) -> Non
     if value is None:
         return
     if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
-        raise ValueError(f"{name} must be a finite number")
+        raise GeoValueError("project.not_finite", name=name)
     if not low <= value <= high:
-        raise ValueError(f"{name} must be between {low:g} and {high:g}")
+        raise GeoValueError("project.range", name=name, low=low, high=high)
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,36 +168,38 @@ def project_to_json(project: Project, *, saved_at: dt.datetime | None = None) ->
 
 def _expect_object(value: object, path: str) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise ProjectFormatError(path, "must be an object")
+        raise ProjectFormatError(path, Problem("project.must_be_object"))
     return value
 
 
 def _check_keys(data: Mapping[str, Any], path: str, allowed: set[str], required: set[str]) -> None:
     unknown = sorted(set(data) - allowed)
     if unknown:
-        raise ProjectFormatError(f"{path}.{unknown[0]}" if path else unknown[0], "unknown field")
+        raise ProjectFormatError(
+            f"{path}.{unknown[0]}" if path else unknown[0], Problem("project.unknown_field")
+        )
     missing = sorted(required - set(data))
     if missing:
-        raise ProjectFormatError(f"{path}.{missing[0]}" if path else missing[0], "is required")
+        raise ProjectFormatError(
+            f"{path}.{missing[0]}" if path else missing[0], Problem("project.required")
+        )
 
 
-def _typed(value: object, path: str, kind: type[_T], description: str) -> _T:
-    if isinstance(value, bool) and kind is not bool:
-        raise ProjectFormatError(path, f"must be {description}")
-    if not isinstance(value, kind):
-        raise ProjectFormatError(path, f"must be {description}")
+def _typed(value: object, path: str, kind: type[_T], code: str) -> _T:
+    if (isinstance(value, bool) and kind is not bool) or not isinstance(value, kind):
+        raise ProjectFormatError(path, Problem(code))
     return value
 
 
 def _text(value: object, path: str) -> str:
-    return _typed(value, path, str, "text")
+    return _typed(value, path, str, "project.must_be_text")
 
 
 def _optional_number(value: object, path: str) -> float | None:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ProjectFormatError(path, "must be a number or null")
+        raise ProjectFormatError(path, Problem("project.must_be_number_or_null"))
     return float(value)
 
 
@@ -204,7 +211,7 @@ def _build(path: str, factory: Callable[[], _T]) -> _T:
     try:
         return factory()
     except (TypeError, ValueError) as exc:
-        raise ProjectFormatError(path, str(exc)) from exc
+        raise ProjectFormatError(path, problem_of(exc)) from exc
 
 
 _SURVEY_KEYS = {field.name for field in dataclasses.fields(SurveyInfo)}
@@ -234,7 +241,10 @@ def _read_survey(value: object) -> SurveyInfo:
             values[name] = _optional_number(data[name], f"{path}.{name}")
     if data.get("date") is not None:
         date_text = _text(data["date"], f"{path}.date")
-        values["date"] = _build(f"{path}.date", lambda: dt.date.fromisoformat(date_text))
+        try:
+            values["date"] = dt.date.fromisoformat(date_text)
+        except ValueError:
+            raise ProjectFormatError(f"{path}.date", Problem("project.date")) from None
     return _build(path, lambda: SurveyInfo(**values))
 
 
@@ -243,7 +253,7 @@ def _read_sheet(value: object) -> tuple[SheetSettings, tuple[SheetRow, ...]]:
     data = _expect_object(value, path)
     _check_keys(data, path, {"array", "rows", *_SETTINGS_KEYS}, {"rows"})
     if data.get("array", "schlumberger") != "schlumberger":
-        raise ProjectFormatError(f"{path}.array", "only 'schlumberger' is supported")
+        raise ProjectFormatError(f"{path}.array", Problem("project.array"))
 
     settings: dict[str, Any] = {}
     for name in ("voltage_unit", "current_unit"):
@@ -252,10 +262,10 @@ def _read_sheet(value: object) -> tuple[SheetSettings, tuple[SheetRow, ...]]:
     if "cv_limit_percent" in data:
         limit = _optional_number(data["cv_limit_percent"], f"{path}.cv_limit_percent")
         if limit is None or not 0.0 < limit <= 100.0:
-            raise ProjectFormatError(f"{path}.cv_limit_percent", "must be between 0 and 100")
+            raise ProjectFormatError(f"{path}.cv_limit_percent", Problem("project.cv_limit"))
         settings["cv_limit_percent"] = limit
 
-    rows_value = _typed(data["rows"], f"{path}.rows", list, "a list")
+    rows_value = _typed(data["rows"], f"{path}.rows", list, "project.must_be_list")
     rows = []
     for index, row_value in enumerate(rows_value):
         row_path = f"{path}.rows[{index}]"
@@ -268,7 +278,7 @@ def _read_sheet(value: object) -> tuple[SheetSettings, tuple[SheetRow, ...]]:
         }
         if "excluded" in row:
             values["excluded"] = _typed(
-                row["excluded"], f"{row_path}.excluded", bool, "true or false"
+                row["excluded"], f"{row_path}.excluded", bool, "project.must_be_flag"
             )
         rows.append(SheetRow(**values))
     return SheetSettings(**settings), tuple(rows)
@@ -276,7 +286,7 @@ def _read_sheet(value: object) -> tuple[SheetSettings, tuple[SheetRow, ...]]:
 
 def _read_measurements(value: object) -> tuple[Measurement, ...]:
     path = "measurements"
-    items = _typed(value, path, list, "a list")
+    items = _typed(value, path, list, "project.must_be_list")
     measurements = []
     for index, item in enumerate(items):
         item_path = f"{path}[{index}]"
@@ -288,7 +298,7 @@ def _read_measurements(value: object) -> tuple[Measurement, ...]:
             if name.endswith("_original"):
                 number = _optional_number(data[name], field_path)
                 if number is None and name in _MEASUREMENT_REQUIRED:
-                    raise ProjectFormatError(field_path, "must be a number")
+                    raise ProjectFormatError(field_path, Problem("project.must_be_number"))
                 values[name] = number
             elif name in _MEASUREMENT_REQUIRED:
                 values[name] = _text(data[name], field_path)
@@ -310,17 +320,14 @@ def project_from_dict(data: object) -> Project:
     """Validate and read the JSON content of a project, migrating older versions."""
     document = _expect_object(data, "")
     if document.get("schema") != SCHEMA:
-        raise ProjectFormatError(
-            "schema", f"this is not a GeoResistivity project (expected {SCHEMA!r})"
-        )
+        raise ProjectFormatError("schema", Problem("project.not_project", {"expected": SCHEMA}))
     version = document.get("schema_version")
     if isinstance(version, bool) or not isinstance(version, int) or version < 1:
-        raise ProjectFormatError("schema_version", "must be a positive integer")
+        raise ProjectFormatError("schema_version", Problem("project.bad_version"))
     if version > SCHEMA_VERSION:
         raise ProjectFormatError(
             "schema_version",
-            f"the file uses version {version}, newer than this program supports "
-            f"({SCHEMA_VERSION}); update GeoResistivity to open it",
+            Problem("project.newer_version", {"version": version, "supported": SCHEMA_VERSION}),
         )
     while version < SCHEMA_VERSION:
         document = _MIGRATIONS[version](document)
@@ -346,7 +353,7 @@ def project_from_json(text: str) -> Project:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise ProjectFormatError(
-            "", f"not valid JSON (line {exc.lineno}, column {exc.colno})"
+            "", Problem("project.invalid_json", {"line": exc.lineno, "column": exc.colno})
         ) from exc
     return project_from_dict(data)
 
@@ -376,11 +383,11 @@ class SheetTemplate:
 
     def __post_init__(self) -> None:
         if not self.name.strip():
-            raise ValueError("a template needs a name")
+            raise GeoValueError("template.needs_name")
         if not self.rows:
-            raise ValueError("a template needs at least one row")
+            raise GeoValueError("template.needs_rows")
         if any(row.delta_v or row.current or row.excluded or row.reason for row in self.rows):
-            raise ValueError("a template keeps only marker, AB/2, and MN")
+            raise GeoValueError("template.layout_only")
 
     @classmethod
     def from_rows(cls, name: str, rows: tuple[SheetRow, ...] | list[SheetRow]) -> "SheetTemplate":
@@ -417,18 +424,20 @@ def template_from_json(text: str) -> SheetTemplate:
         data = _expect_object(json.loads(text), "")
     except json.JSONDecodeError as exc:
         raise ProjectFormatError(
-            "", f"not valid JSON (line {exc.lineno}, column {exc.colno})"
+            "", Problem("project.invalid_json", {"line": exc.lineno, "column": exc.colno})
         ) from exc
     if data.get("schema") != TEMPLATE_SCHEMA:
         raise ProjectFormatError(
-            "schema", f"this is not a sheet template (expected {TEMPLATE_SCHEMA!r})"
+            "schema", Problem("template.not_template", {"expected": TEMPLATE_SCHEMA})
         )
     if data.get("schema_version") != TEMPLATE_SCHEMA_VERSION:
-        raise ProjectFormatError("schema_version", f"must be {TEMPLATE_SCHEMA_VERSION}")
+        raise ProjectFormatError(
+            "schema_version", Problem("template.bad_version", {"version": TEMPLATE_SCHEMA_VERSION})
+        )
     _check_keys(data, "", {"schema", "schema_version", "name", "rows"}, {"name", "rows"})
     name = _text(data["name"], "name")
     rows = []
-    for index, value in enumerate(_typed(data["rows"], "rows", list, "a list")):
+    for index, value in enumerate(_typed(data["rows"], "rows", list, "project.must_be_list")):
         path = f"rows[{index}]"
         row = _expect_object(value, path)
         _check_keys(row, path, _TEMPLATE_ROW_KEYS, {"ab2", "mn"})

@@ -12,6 +12,7 @@ from typing import Literal
 
 from georesistivity.formatting import NumberFormat, format_full_precision
 from georesistivity.geometry import GeometryError, field_sheet_cells, schlumberger_geometric_factor
+from georesistivity.messages import Problem, problem_of
 from georesistivity.models import MeasurementFieldError
 from georesistivity.stacking import DEFAULT_CV_THRESHOLD
 from georesistivity.survey import (
@@ -44,10 +45,15 @@ class SheetRow:
 
 @dataclass(frozen=True, slots=True)
 class RowIssue:
-    """One problem in one column of a row."""
+    """One problem in one column of a row; ``message`` is English, ``problem`` translatable."""
 
     column: SheetColumn
     message: str
+    problem: Problem | None = field(default=None, compare=False)
+
+    @classmethod
+    def of(cls, column: SheetColumn, problem: Problem) -> "RowIssue":
+        return cls(column, problem.text(), problem)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +100,7 @@ def _parse(column: SheetColumn, text: str, issues: list[RowIssue]) -> float | No
     try:
         return parse_number(text)
     except ValueError as exc:
-        issues.append(RowIssue(column, str(exc)))
+        issues.append(RowIssue.of(column, problem_of(exc)))
         return None
 
 
@@ -126,20 +132,20 @@ def _evaluate_row(
     current = None if missing == "current" else _parse("current", row.current, issues)
     reason = row.reason.strip()
     if row.excluded and not reason:
-        issues.append(RowIssue("reason", "is required to exclude a reading"))
+        issues.append(RowIssue.of("reason", Problem("sheet.reason_required")))
 
     if ab2 is not None and mn is not None:
         try:
             schlumberger_geometric_factor(ab2, mn)
         except GeometryError as exc:
-            issues.append(RowIssue("ab2" if exc.parameter == "ab2" else "mn", exc.reason))
+            issues.append(RowIssue.of("ab2" if exc.parameter == "ab2" else "mn", exc.problem))
         except ValueError as exc:
-            issues.append(RowIssue("ab2", str(exc)))
+            issues.append(RowIssue.of("ab2", problem_of(exc)))
 
     if issues:
         return RowStatus("invalid", tuple(issues)), None
     if missing is not None:
-        return RowStatus("incomplete", (RowIssue(missing, "not typed yet"),)), None
+        return RowStatus("incomplete", (RowIssue.of(missing, Problem("sheet.not_typed")),)), None
     assert ab2 is not None and mn is not None and delta_v is not None and current is not None
 
     reading = Reading(
@@ -154,7 +160,7 @@ def _evaluate_row(
         evaluate_reading(reading)
     except MeasurementFieldError as exc:
         column: SheetColumn = "delta_v" if exc.field == "delta_v" else "current"
-        return RowStatus("invalid", (RowIssue(column, exc.reason),)), None
+        return RowStatus("invalid", (RowIssue.of(column, exc.problem),)), None
 
     state: RowState = "excluded" if row.excluded else "valid"
     parsed = _ParsedRow(ab2, mn, row.marker.strip() or None, reading)

@@ -9,6 +9,7 @@ from georesistivity.geometry import ArrayType, GeometryParameter
 from georesistivity.services import (
     FieldIssue,
     MeasurementInput,
+    ParameterIssue,
     calculate_geometric_factor,
     evaluate_submission,
 )
@@ -284,7 +285,7 @@ def test_stand_alone_k_calculation(
 def test_stand_alone_k_reports_every_invalid_parameter() -> None:
     outcome = calculate_geometric_factor("dipole-dipole", {"a": "", "n": "1,000"}, "m")
 
-    assert [parameter for parameter, _ in outcome.issues] == ["a", "n"]
+    assert [issue.parameter for issue in outcome.issues] == ["a", "n"]
     assert outcome.value_m is None
 
 
@@ -295,6 +296,6 @@ def test_stand_alone_k_reports_geometry_and_overflow_problems() -> None:
         "general", {"am": "5", "bm": "5", "an": "5", "bn": "5"}, "m"
     )
 
-    assert invalid.issues == (("mn", "MN/2 must be smaller than AB/2"),)
+    assert invalid.issues == (ParameterIssue("mn", "MN/2 must be smaller than AB/2"),)
     assert overflow.error is not None
     assert undefined.error is not None

@@ -16,6 +16,7 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Literal
 
+from georesistivity.messages import GeoValueError, Problem
 from georesistivity.validation import ensure_finite_number
 
 ArrayType = Literal["schlumberger", "wenner", "dipole-dipole", "pole-dipole", "general"]
@@ -74,27 +75,31 @@ def field_sheet_cells() -> tuple[tuple[float, float], ...]:
 
 
 class GeometryError(ValueError):
-    """An electrode-geometry parameter that does not define a valid array."""
+    """An electrode-geometry parameter that does not define a valid array.
 
-    def __init__(self, parameter: GeometryParameter, reason: str) -> None:
-        super().__init__(f"{parameter}: {reason}")
+    ``reason`` is the English text of ``problem``, which interfaces can translate.
+    """
+
+    def __init__(self, parameter: GeometryParameter, problem: Problem) -> None:
         self.parameter: GeometryParameter = parameter
-        self.reason = reason
+        self.problem = problem
+        self.reason = problem.text()
+        super().__init__(f"{parameter}: {self.reason}")
 
 
 def _positive(value: float, parameter: GeometryParameter) -> float:
     try:
         number = ensure_finite_number(value, parameter)
     except ValueError:
-        raise GeometryError(parameter, "must be finite") from None
+        raise GeometryError(parameter, Problem("field.not_finite")) from None
     if number <= 0.0:
-        raise GeometryError(parameter, "must be positive")
+        raise GeometryError(parameter, Problem("field.not_positive"))
     return number
 
 
 def _finite_result(value: float) -> float:
     if not math.isfinite(value):
-        raise ValueError("geometric factor is too large to represent")
+        raise GeoValueError("geometry.too_large")
     return value
 
 
@@ -117,7 +122,7 @@ def general_geometric_factor(am: float, bm: float, an: float, bn: float) -> floa
         + _inverse_distance(bn, "bn")
     )
     if denominator == 0.0:
-        raise ValueError("electrode layout gives no potential difference; K is undefined")
+        raise GeoValueError("geometry.undefined")
     return _finite_result(2.0 * math.pi / denominator)
 
 
@@ -130,7 +135,7 @@ def schlumberger_geometric_factor(ab2: float, mn: float) -> float:
     half_current = _positive(ab2, "ab2")
     half_potential = _positive(mn, "mn") / 2.0
     if half_potential >= half_current:
-        raise GeometryError("mn", "MN/2 must be smaller than AB/2")
+        raise GeometryError("mn", Problem("geometry.mn_too_wide"))
     # (L - l)(L + l) instead of L^2 - l^2: no cancellation, and overflow gives inf, not an
     # OverflowError.
     difference_of_squares = (half_current - half_potential) * (half_current + half_potential)
@@ -174,7 +179,7 @@ def geometric_factor(array: ArrayType, parameters: Mapping[GeometryParameter, fl
         raise ValueError(f"unsupported array: {array!r}")
     for parameter in ARRAY_PARAMETERS[array]:
         if parameter not in parameters:
-            raise GeometryError(parameter, "is required")
+            raise GeometryError(parameter, Problem("field.required"))
 
     if array == "schlumberger":
         return schlumberger_geometric_factor(parameters["ab2"], parameters["mn"])
