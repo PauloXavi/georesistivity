@@ -200,6 +200,92 @@ def _draw_error_bars(
         )
 
 
+def _segment_error_bars(
+    segments: dict[float, list[PointResult]],
+) -> dict[float, list[SoundingErrorBar]]:
+    bars: dict[float, list[SoundingErrorBar]] = {}
+    for mn_m, segment in segments.items():
+        found = [sounding_error_bar(point) for point in segment]
+        bars[mn_m] = [bar for bar in found if bar is not None]
+    return bars
+
+
+def _limits(
+    segments: dict[float, list[PointResult]], bars: Sequence[SoundingErrorBar]
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    all_ab2 = [point.point.ab2_m for segment in segments.values() for point in segment]
+    all_rho = [
+        point.apparent_resistivity_ohm_m or 0.0
+        for segment in segments.values()
+        for point in segment
+    ]
+    all_rho += [bar.upper_ohm_m for bar in bars]
+    all_rho += [bar.lower_ohm_m for bar in bars if not bar.reaches_zero]
+    return (
+        _decade_limits(all_ab2, SOUNDING_MIN_AB2_DECADES),
+        _decade_limits(all_rho, SOUNDING_MIN_RHO_DECADES),
+    )
+
+
+def sounding_axis_limits(
+    points: Sequence[PointResult], *, error_bars: bool = True
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Whole-decade AB/2 [m] and rho_a [ohm.m] limits of the VES curve.
+
+    The limits cover every plottable point and, with ``error_bars``, the drawable ends of its
+    error bars, and never less than the bilog paper (1-1000 m, 1-10 000 ohm.m).
+    """
+    segments = sounding_segments(points)
+    if not segments:
+        raise ValueError("at least one point with positive apparent resistivity is required")
+    bars = _segment_error_bars(segments) if error_bars else {}
+    return _limits(segments, [bar for segment_bars in bars.values() for bar in segment_bars])
+
+
+def _decades(limits: tuple[float, float]) -> int:
+    return round(math.log10(limits[1] / limits[0]))
+
+
+def sounding_decades(points: Sequence[PointResult], *, error_bars: bool = True) -> tuple[int, int]:
+    """Number of decades of the AB/2 and rho_a axes of the VES curve."""
+    x_limits, y_limits = sounding_axis_limits(points, error_bars=error_bars)
+    return _decades(x_limits), _decades(y_limits)
+
+
+MM_PER_INCH = 25.4
+SCALE_MARGINS_MM = (22.0, 6.0, 15.0)
+"""Left, right, and bottom margins [mm] around a plot drawn to scale, for the tick labels."""
+TITLE_LINE_MM = 5.5
+"""Height [mm] of one title line above a plot drawn to scale."""
+
+
+def _scaled_axes(
+    x_limits: tuple[float, float],
+    y_limits: tuple[float, float],
+    decade_mm: float,
+    title_lines: int,
+) -> tuple[Figure, Axes]:
+    """A figure whose plot area is exactly ``decade_mm`` per decade on both axes."""
+    if not (math.isfinite(decade_mm) and decade_mm > 0.0):
+        raise ValueError(f"decade_mm must be a positive number, got {decade_mm!r}")
+    width_mm = _decades(x_limits) * decade_mm
+    height_mm = _decades(y_limits) * decade_mm
+    left_mm, right_mm, bottom_mm = SCALE_MARGINS_MM
+    top_mm = 4.0 + TITLE_LINE_MM * title_lines
+    figure_width_mm = left_mm + width_mm + right_mm
+    figure_height_mm = bottom_mm + height_mm + top_mm
+    figure = Figure(figsize=(figure_width_mm / MM_PER_INCH, figure_height_mm / MM_PER_INCH))
+    axes = figure.add_axes(
+        (
+            left_mm / figure_width_mm,
+            bottom_mm / figure_height_mm,
+            width_mm / figure_width_mm,
+            height_mm / figure_height_mm,
+        )
+    )
+    return figure, axes
+
+
 def find_unplottable_sounding_points(points: Sequence[PointResult]) -> tuple[PointResult, ...]:
     """Return points whose apparent resistivity cannot appear on a log-log curve."""
     return tuple(
@@ -215,6 +301,7 @@ def create_sounding_figure(
     number_format: NumberFormat = "pt-BR",
     labels: SoundingFigureLabels | None = None,
     error_bars: bool = True,
+    decade_mm: float | None = None,
 ) -> Figure:
     """Draw the VES curve on log-log axes with one segment per MN.
 
@@ -226,32 +313,26 @@ def create_sounding_figure(
     With ``error_bars``, points with two or more included readings get a bar of one standard
     error of the mean (:class:`SoundingErrorBar`). A bar that reaches zero continues dotted to
     the bottom of the plot, and its point is circled even without a warning.
+
+    With ``decade_mm``, the plot is drawn to scale: one decade measures ``decade_mm`` millimetres
+    on both axes of the saved figure (vector formats keep it exactly; print at 100%), so the
+    curve can be laid over master curves of the same modulus. Otherwise the figure is 7 x 7 in.
     """
     segments = sounding_segments(points)
     if not segments:
         raise ValueError("at least one point with positive apparent resistivity is required")
 
-    bars: dict[float, list[SoundingErrorBar]] = {}
-    if error_bars:
-        for mn_m, segment in segments.items():
-            found = [sounding_error_bar(point) for point in segment]
-            bars[mn_m] = [bar for bar in found if bar is not None]
+    bars = _segment_error_bars(segments) if error_bars else {}
     all_bars = [bar for segment_bars in bars.values() for bar in segment_bars]
-
-    all_ab2 = [point.point.ab2_m for segment in segments.values() for point in segment]
-    all_rho = [
-        point.apparent_resistivity_ohm_m or 0.0
-        for segment in segments.values()
-        for point in segment
-    ]
-    all_rho += [bar.upper_ohm_m for bar in all_bars]
-    all_rho += [bar.lower_ohm_m for bar in all_bars if not bar.reaches_zero]
-    x_limits = _decade_limits(all_ab2, SOUNDING_MIN_AB2_DECADES)
-    y_limits = _decade_limits(all_rho, SOUNDING_MIN_RHO_DECADES)
+    x_limits, y_limits = _limits(segments, all_bars)
 
     texts = labels or SoundingFigureLabels()
-    figure = Figure(figsize=(7.0, 7.0), layout="constrained")
-    axes = figure.subplots()
+    if decade_mm is None:
+        figure = Figure(figsize=(7.0, 7.0), layout="constrained")
+        axes = figure.subplots()
+    else:
+        title_lines = texts.title.count("\n") + 1
+        figure, axes = _scaled_axes(x_limits, y_limits, decade_mm, title_lines)
     flagged_ab2: list[float] = []
     flagged_rho: list[float] = []
     for mn_m, segment in segments.items():
@@ -296,7 +377,8 @@ def create_sounding_figure(
     axes.set_yscale("log")
     axes.set_xlim(*x_limits)
     axes.set_ylim(*y_limits)
-    axes.set_aspect("equal")
+    if decade_mm is None:
+        axes.set_aspect("equal")  # a scaled plot already has equal decades by its size
     axes.set_title(texts.title)
     axes.set_xlabel(texts.x_axis)
     axes.set_ylabel(texts.y_axis)

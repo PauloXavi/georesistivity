@@ -22,6 +22,8 @@ from georesistivity.plotting import (
     SpacingFigureLabels,
     create_sounding_figure,
     find_unplottable_sounding_points,
+    sounding_axis_limits,
+    sounding_decades,
     sounding_error_bar,
     sounding_segments,
 )
@@ -335,3 +337,66 @@ def test_bar_reaching_zero_is_dotted_to_the_bottom_and_circled() -> None:
     assert len(dotted) == 1
     assert dotted[0][1][1] == pytest.approx(0.1 * 49.5 * math.pi)  # up to the point
     assert "Quality warning" in [text.get_text() for text in axes.get_legend().get_texts()]
+
+
+def plot_area_mm(points: tuple[PointResult, ...], **options: object) -> tuple[float, float]:
+    figure = create_sounding_figure(points, **options)  # type: ignore[arg-type]
+    width_in, height_in = figure.get_size_inches()
+    box = figure.axes[0].get_position()
+    return box.width * width_in * 25.4, box.height * height_in * 25.4
+
+
+def test_scaled_figure_has_the_same_decade_length_on_both_axes() -> None:
+    # The field sheet minimum is 3 decades of AB/2 (1-1000 m) and 4 of rho_a (1-10 000 ohm.m).
+    width_mm, height_mm = plot_area_mm(sounding(*OVERLAP_SOUNDING), decade_mm=62.5)
+
+    assert width_mm == pytest.approx(3 * 62.5)
+    assert height_mm == pytest.approx(4 * 62.5)
+
+
+def test_scaled_figure_grows_with_extra_decades() -> None:
+    # rho_a from 1.5e-4 to 2.8e6 ohm.m: eleven decades from 1e-4 to 1e7.
+    points = sounding(
+        SheetRow(ab2="320", mn="100", delta_v="9000", current="10"),
+        SheetRow(ab2="1", mn="0,5", delta_v="0,01", current="400"),
+    )
+
+    assert sounding_decades(points) == (3, 11)
+    assert plot_area_mm(points, decade_mm=20.0) == pytest.approx((60.0, 220.0))
+
+
+def test_scaled_figure_leaves_room_for_every_title_line() -> None:
+    one_line = create_sounding_figure(sounding(*OVERLAP_SOUNDING), decade_mm=50.0)
+    two_lines = create_sounding_figure(
+        sounding(*OVERLAP_SOUNDING),
+        labels=SoundingFigureLabels(title="Sondagem\nSEV 01"),
+        decade_mm=50.0,
+    )
+
+    assert one_line.get_size_inches()[1] * 25.4 == pytest.approx(15.0 + 200.0 + 4.0 + 5.5)
+    assert two_lines.get_size_inches()[1] * 25.4 == pytest.approx(15.0 + 200.0 + 4.0 + 11.0)
+    assert one_line.get_size_inches()[0] * 25.4 == pytest.approx(22.0 + 150.0 + 6.0)
+
+
+@pytest.mark.parametrize("decade_mm", [0.0, -10.0, math.nan, math.inf])
+def test_scaled_figure_needs_a_positive_modulus(decade_mm: float) -> None:
+    with pytest.raises(ValueError, match="decade_mm must be a positive number"):
+        create_sounding_figure(sounding(*OVERLAP_SOUNDING), decade_mm=decade_mm)
+
+
+def test_axis_limits_follow_the_error_bar_option() -> None:
+    rows = (
+        SheetRow(ab2="320", mn="100", delta_v="26", current="10"),
+        SheetRow(ab2="320", mn="100", delta_v="32", current="10"),
+    )
+
+    assert sounding_axis_limits(sounding(*rows)) == ((1.0, 1000.0), (1.0, 100000.0))
+    assert sounding_axis_limits(sounding(*rows), error_bars=False)[1] == (1.0, 10000.0)
+    assert sounding_decades(sounding(*rows)) == (3, 5)
+
+
+def test_axis_limits_need_a_plottable_point() -> None:
+    points = sounding(SheetRow(ab2="1", mn="0,5", delta_v="-80", current="40"))
+
+    with pytest.raises(ValueError, match="positive apparent resistivity"):
+        sounding_axis_limits(points)
