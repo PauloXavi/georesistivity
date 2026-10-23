@@ -116,9 +116,14 @@ class Project:
 
     def suggested_file_name(self) -> str:
         """File name from the SEV number and the place, e.g. ``SEV-01-Fazenda.geores.json``."""
-        parts = ["SEV", self.survey.sev_number, self.survey.local or self.survey.name]
-        stem = "-".join(_safe_name(part) for part in parts if _safe_name(part))
-        return f"{stem if stem != 'SEV' else 'georesistivity-project'}{FILE_SUFFIX}"
+        return f"{survey_file_stem(self.survey) or 'georesistivity-project'}{FILE_SUFFIX}"
+
+
+def survey_file_stem(survey: SurveyInfo) -> str | None:
+    """``SEV-01-Fazenda`` from the SEV number and the place, or ``None`` if both are empty."""
+    parts = ["SEV", survey.sev_number, survey.local or survey.name]
+    stem = "-".join(_safe_name(part) for part in parts if _safe_name(part))
+    return stem if stem != "SEV" else None
 
 
 def _safe_name(text: str) -> str:

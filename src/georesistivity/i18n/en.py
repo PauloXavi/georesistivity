@@ -165,6 +165,29 @@ TEXT: dict[str, str] = {
     "figure.mn_legend": "MN = {mn} m",
     "figure.quality_warning": "Quality warning",
     "figure.error_bars": "±1 standard error of the mean (n ≥ 2)",
+    "figure.survey_number": "VES {number}",
+    "figure.date_format": "%Y-%m-%d",
+    # Figure export.
+    "export.title": "Export figure",
+    "export.format": "Format",
+    "export.format_png": "PNG (image, 300 dpi)",
+    "export.format_svg": "SVG (vector, editable)",
+    "export.format_pdf": "PDF (vector, for printing)",
+    "export.size": "Size",
+    "export.size_standard": "Standard (17.8 × 17.8 cm)",
+    "export.size_scale": "Bilog paper scale",
+    "export.decade_mm": "Modulus [mm per decade]",
+    "export.decade_help": (
+        "Length of one decade on both axes, as on bilog paper and master curves. The default of "
+        "{default} mm is provisional: replace it with the modulus of your paper."
+    ),
+    "export.scale_caption": (
+        "Plot area: {width} × {height} cm ({x_decades} × {y_decades} decades). To keep the scale, "
+        "print at 100% (no fit to page) and check one decade with a ruler; PDF and SVG keep the "
+        "exact size."
+    ),
+    "export.title_with_survey": "Title with VES no., place, and date",
+    "export.download": "Download figure ({format})",
     # Quality warnings.
     "warning.negative_apparent_resistivity": (
         "Negative apparent resistivity. Check the polarity of the potential electrodes, the "

@@ -165,6 +165,29 @@ TEXT: dict[str, str] = {
     "figure.mn_legend": "MN = {mn} m",
     "figure.quality_warning": "Aviso de qualidade",
     "figure.error_bars": "±1 erro-padrão da média (n ≥ 2)",
+    "figure.survey_number": "SEV {number}",
+    "figure.date_format": "%d/%m/%Y",
+    # Exportação da figura.
+    "export.title": "Exportar figura",
+    "export.format": "Formato",
+    "export.format_png": "PNG (imagem, 300 dpi)",
+    "export.format_svg": "SVG (vetorial, editável)",
+    "export.format_pdf": "PDF (vetorial, para imprimir)",
+    "export.size": "Tamanho",
+    "export.size_standard": "Padrão (17,8 × 17,8 cm)",
+    "export.size_scale": "Escala do papel bilog",
+    "export.decade_mm": "Módulo [mm por década]",
+    "export.decade_help": (
+        "Tamanho de uma década nos dois eixos, como no papel bilog e nas curvas-padrão. O "
+        "padrão de {default} mm é provisório: troque pelo módulo do seu papel."
+    ),
+    "export.scale_caption": (
+        "Área do gráfico: {width} × {height} cm ({x_decades} × {y_decades} décadas). Para "
+        "manter a escala, imprima em 100% (sem ajustar à página) e confira uma década com a "
+        "régua; o PDF e o SVG guardam o tamanho exato."
+    ),
+    "export.title_with_survey": "Título com SEV nº, local e data",
+    "export.download": "Baixar figura ({format})",
     # Avisos de qualidade.
     "warning.negative_apparent_resistivity": (
         "Resistividade aparente negativa. Verifique a polaridade dos eletrodos de potencial, o "
@@ -474,5 +497,9 @@ PROBLEMS: dict[str, str] = {
     "template.bad_version": "precisa ser {version}",
     "template.needs_name": "o modelo precisa de um nome",
     "template.needs_rows": "o modelo precisa de pelo menos uma linha",
+    "figure.decade_mm": "o módulo deve estar entre {low:g} e {high:g} mm; foi {value:g}",
+    "figure.nothing_to_plot": (
+        "a folha de campo não tem posição com resistividade aparente positiva"
+    ),
     "template.layout_only": "o modelo guarda só cor, AB/2 e MN",
 }

@@ -96,6 +96,11 @@ EN: dict[str, str] = {
     "template.needs_name": "a template needs a name",
     "template.needs_rows": "a template needs at least one row",
     "template.layout_only": "a template keeps only marker, AB/2, and MN",
+    # Figures.
+    "figure.decade_mm": "the decade size must be between {low:g} and {high:g} mm, got {value:g}",
+    "figure.nothing_to_plot": (
+        "the field sheet has no position with a positive apparent resistivity"
+    ),
 }
 
 
