@@ -6,9 +6,21 @@ import os
 import subprocess
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from georesistivity import __version__
 from georesistivity.app import MAIN_SCRIPT
+from georesistivity.figures import (
+    DECADE_MM_RANGE,
+    DEFAULT_DECADE_MM,
+    FIGURE_FORMATS,
+    FigureFormat,
+    FigureOptions,
+    check_decade_mm,
+    evaluate_project_sheet,
+    figure_file_name,
+    sounding_figure_file,
+)
 from georesistivity.formatting import NumberFormat, format_full_precision, format_significant
 from georesistivity.geometry import (
     ARRAY_PARAMETERS,
@@ -22,7 +34,9 @@ from georesistivity.geometry import (
     schlumberger_k_table,
     schlumberger_spacing_ratio,
 )
+from georesistivity.i18n import LANGUAGES, Language
 from georesistivity.models import MeasurementField, MeasurementWarning
+from georesistivity.project import ProjectFormatError, project_from_json
 from georesistivity.services import GeometricFactorMode, MeasurementInput, evaluate_submission
 from georesistivity.storage import AUTOSAVE_VARIABLE
 from georesistivity.units import convert_length_to_meters, split_quantity
@@ -187,6 +201,59 @@ def _add_calc_parser(subcommands: "argparse._SubParsersAction[argparse.ArgumentP
     _add_number_format(calc)
 
 
+def _decade_mm(text: str) -> float:
+    try:
+        return check_decade_mm(parse_number(text))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
+def _add_plot_parser(subcommands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
+    low, high = DECADE_MM_RANGE
+    plot = subcommands.add_parser(
+        "plot",
+        help="save the VES curve of a project as PNG, SVG, or PDF",
+        description="Draw the field sheet of a project (*.geores.json) as a log-log VES curve "
+        "and save it as PNG (300 dpi), SVG, or PDF. The format comes from --format or from the "
+        "output name.",
+    )
+    plot.add_argument("project", type=Path, help="project file (*.geores.json)")
+    plot.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        help="figure file to write (default: named after the SEV number and place, e.g. "
+        "SEV-01-Fazenda-ves-curve.pdf, in the current directory)",
+    )
+    plot.add_argument("--format", choices=FIGURE_FORMATS, help="png, svg, or pdf (default: pdf)")
+    plot.add_argument(
+        "--decade-mm",
+        type=_decade_mm,
+        nargs="?",
+        const=DEFAULT_DECADE_MM,
+        metavar="MM",
+        help="draw to bilog paper scale with MM millimetres per decade on both axes "
+        f"({low:g} to {high:g}; {DEFAULT_DECADE_MM:g} if MM is left out, a provisional default)",
+    )
+    plot.add_argument("--no-error-bars", action="store_true", help="leave out the error bars")
+    plot.add_argument(
+        "--no-title-details",
+        action="store_true",
+        help="leave the SEV number, place, and date out of the title",
+    )
+    plot.add_argument(
+        "--language",
+        choices=tuple(LANGUAGES),
+        default="pt-BR",
+        help="language of the figure texts: pt-BR (default) or en",
+    )
+    plot.add_argument(
+        "--number-format",
+        choices=("pt-BR", "en"),
+        help="decimal separator of the legend (default: the one of --language)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for all subcommands."""
     parser = argparse.ArgumentParser(
@@ -227,6 +294,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_k_parser(subcommands)
     _add_calc_parser(subcommands)
+    _add_plot_parser(subcommands)
     return parser
 
 
@@ -430,6 +498,84 @@ def run_calc(
     return 0
 
 
+def _figure_format(output: Path | None, requested: FigureFormat | None) -> FigureFormat:
+    """The format from --format and the output name, which must end in .png, .svg, or .pdf."""
+    if output is None:
+        return requested or "pdf"
+    suffix = output.suffix.lower().lstrip(".")
+    if suffix not in FIGURE_FORMATS:
+        raise ValueError(f"the output name {output.name!r} must end in .png, .svg, or .pdf")
+    if requested is not None and requested != suffix:
+        raise ValueError(f"the output name ends in .{suffix} but --format is {requested}")
+    return suffix
+
+
+def run_plot(
+    *,
+    project_path: Path,
+    output: Path | None,
+    file_format: FigureFormat | None,
+    decade_mm: float | None,
+    error_bars: bool,
+    title_details: bool,
+    language: Language,
+    number_format: NumberFormat | None,
+) -> int:
+    """Save the VES curve of a project file and return the exit code."""
+    try:
+        resolved = _figure_format(output, file_format)
+    except ValueError as exc:
+        return _fail(str(exc))
+    try:
+        project = project_from_json(project_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return _fail(f"cannot read {project_path}: {exc.strerror or exc}")
+    except ProjectFormatError as exc:
+        return _fail(f"{project_path}: {exc}")
+
+    outcome = evaluate_project_sheet(project)
+    options = FigureOptions(
+        file_format=resolved,
+        decade_mm=decade_mm,
+        error_bars=error_bars,
+        title_with_survey=title_details,
+        language=language,
+        number_format=number_format or ("pt-BR" if language == "pt-BR" else "en"),
+    )
+    try:
+        data = sounding_figure_file(outcome.points, project.survey, options)
+    except ValueError as exc:
+        return _fail(f"{project_path}: {exc}")
+
+    target = output or Path(figure_file_name(project.survey, resolved))
+    try:
+        target.write_bytes(data)
+    except OSError as exc:
+        return _fail(f"cannot write {target}: {exc.strerror or exc}")
+
+    plotted = sum(1 for point in outcome.points if (point.apparent_resistivity_ohm_m or 0.0) > 0)
+    size = ""
+    if decade_mm is not None:
+        from georesistivity.plotting import sounding_decades
+
+        x_decades, y_decades = sounding_decades(outcome.points, error_bars=error_bars)
+        size = (
+            f", plot area {x_decades * decade_mm:g} x {y_decades * decade_mm:g} mm "
+            f"({x_decades} x {y_decades} decades of {decade_mm:g} mm)"
+        )
+    positions = "1 position" if plotted == 1 else f"{plotted} positions"
+    print(f"wrote {target} ({resolved}, {positions}{size})")
+    invalid = len(outcome.invalid_rows)
+    if invalid:
+        rows = (
+            "1 row of the field sheet is"
+            if invalid == 1
+            else f"{invalid} rows of the field sheet are"
+        )
+        print(f"warning: {rows} invalid and left out; open the project in the app to see why")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point of the ``georesistivity`` command."""
     args = build_parser().parse_args(argv)
@@ -463,6 +609,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             ab2=args.ab2,
             mn=args.mn,
             source=args.source,
+            number_format=args.number_format,
+        )
+    if args.command == "plot":
+        return run_plot(
+            project_path=args.project,
+            output=args.output,
+            file_format=args.format,
+            decade_mm=args.decade_mm,
+            error_bars=not args.no_error_bars,
+            title_details=not args.no_title_details,
+            language=args.language,
             number_format=args.number_format,
         )
     raise AssertionError(f"unhandled command: {args.command}")  # pragma: no cover

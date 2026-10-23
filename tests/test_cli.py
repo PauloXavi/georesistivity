@@ -1,13 +1,18 @@
 """Tests for the ``georesistivity`` command line."""
 
+import datetime as dt
+import re
 import runpy
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from georesistivity import __version__, cli
 from georesistivity.app import MAIN_SCRIPT
+from georesistivity.field_sheet import SheetRow
+from georesistivity.project import Project, SurveyInfo, project_to_json
 
 
 def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
@@ -282,3 +287,158 @@ def test_calc_errors(
     assert code == 1
     assert out == ""
     assert message in err
+
+
+PLOT_ROWS = (
+    SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),
+    SheetRow(ab2="10", mn="2", delta_v="30", current="50"),
+    SheetRow(ab2="10", mn="2", delta_v="34", current="50"),
+)
+
+
+def write_project(folder: Path, *rows: SheetRow, survey: SurveyInfo | None = None) -> Path:
+    path = folder / "sev.geores.json"
+    project = Project(
+        survey=survey or SurveyInfo(sev_number="01", local="Fazenda", date=dt.date(2026, 10, 22)),
+        sheet_rows=rows or PLOT_ROWS,
+    )
+    path.write_text(project_to_json(project), encoding="utf-8")
+    return path
+
+
+def page_mm(pdf: bytes) -> tuple[float, float]:
+    match = re.search(rb"/MediaBox \[ ?0 0 ([\d.]+) ([\d.]+) ?\]", pdf)
+    assert match is not None
+    return float(match[1]) * 25.4 / 72, float(match[2]) * 25.4 / 72
+
+
+def test_plot_writes_a_pdf_named_after_the_survey(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = write_project(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["plot", str(project)]) == 0
+
+    written = tmp_path / "SEV-01-Fazenda-ves-curve.pdf"
+    assert written.read_bytes().startswith(b"%PDF")
+    assert page_mm(written.read_bytes()) == pytest.approx((177.8, 177.8))
+    assert capsys.readouterr().out == "wrote SEV-01-Fazenda-ves-curve.pdf (pdf, 2 positions)\n"
+
+
+def test_plot_to_bilog_scale_with_a_typed_modulus(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = write_project(tmp_path)
+    output = tmp_path / "curve.pdf"
+
+    assert cli.main(["plot", str(project), "-o", str(output), "--decade-mm", "62,5"]) == 0
+
+    # 3 x 4 decades of 62.5 mm, the margins, and a two-line title.
+    assert page_mm(output.read_bytes()) == pytest.approx((215.5, 280.0))
+    assert "plot area 187.5 x 250 mm (3 x 4 decades of 62.5 mm)" in capsys.readouterr().out
+
+
+def test_plot_scale_without_a_value_uses_the_provisional_modulus(tmp_path: Path) -> None:
+    project = write_project(tmp_path)
+    output = tmp_path / "curve.pdf"
+
+    assert cli.main(["plot", str(project), "-o", str(output), "--decade-mm"]) == 0
+
+    assert page_mm(output.read_bytes()) == pytest.approx((178.0, 230.0))
+
+
+@pytest.mark.parametrize(("name", "file_format"), [("c.png", None), ("c.svg", "svg")])
+def test_plot_takes_the_format_from_the_output_name(
+    tmp_path: Path, name: str, file_format: str | None
+) -> None:
+    project = write_project(tmp_path)
+    output = tmp_path / name
+    extra = ["--format", file_format] if file_format else []
+
+    assert cli.main(["plot", str(project), "-o", str(output), *extra, "--language", "en"]) == 0
+
+    assert output.read_bytes()[:5] in (b"\x89PNG\r", b"<?xml")
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (["-o", "c.png", "--format", "pdf"], "the output name ends in .png but --format is pdf"),
+        (["-o", "sev.geores.json"], "'sev.geores.json' must end in .png, .svg, or .pdf"),
+    ],
+)
+def test_plot_refuses_unclear_output_names(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
+    message: str,
+) -> None:
+    project = write_project(tmp_path)
+    before = project.read_bytes()
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["plot", str(project), *arguments]) == 1
+
+    assert message in capsys.readouterr().err
+    assert project.read_bytes() == before  # the project is never overwritten
+
+
+def test_plot_reports_unreadable_projects(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    broken = tmp_path / "broken.geores.json"
+    broken.write_text('{"schema": "other"}', encoding="utf-8")
+
+    assert cli.main(["plot", str(tmp_path / "missing.geores.json")]) == 1
+    assert cli.main(["plot", str(broken)]) == 1
+
+    errors = capsys.readouterr().err
+    assert "cannot read" in errors
+    assert "missing.geores.json" in errors
+    assert "schema: this is not a GeoResistivity project" in errors
+
+
+def test_plot_needs_a_plottable_position(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = write_project(tmp_path, SheetRow(ab2="1", mn="0,5", delta_v="-80", current="40"))
+
+    assert cli.main(["plot", str(project), "-o", str(tmp_path / "c.pdf")]) == 1
+
+    assert "no position with a positive apparent resistivity" in capsys.readouterr().err
+    assert not (tmp_path / "c.pdf").exists()
+
+
+def test_plot_warns_about_invalid_rows(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    project = write_project(
+        tmp_path,
+        SheetRow(ab2="1", mn="0,5", delta_v="80", current="40"),
+        SheetRow(ab2="1,3", mn="0,5", delta_v="abc", current="40"),
+    )
+
+    assert cli.main(["plot", str(project), "-o", str(tmp_path / "c.svg")]) == 0
+
+    output = capsys.readouterr().out
+    assert "(svg, 1 position)" in output
+    assert "warning: 1 row of the field sheet is invalid and left out" in output
+
+
+def test_plot_reports_files_it_cannot_write(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = write_project(tmp_path)
+
+    assert cli.main(["plot", str(project), "-o", str(tmp_path / "missing" / "c.pdf")]) == 1
+
+    assert "cannot write" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", ["5", "300", "1,000"])
+def test_plot_rejects_a_bad_modulus(value: str, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["plot", "sev.geores.json", "--decade-mm", value])
+
+    assert exit_info.value.code == 2
+    assert "--decade-mm" in capsys.readouterr().err
